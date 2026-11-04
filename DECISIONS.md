@@ -32,3 +32,9 @@
 - **Event**: first real VH-back deploy of feat failed in the slave workflow — `ssh: connect to host vh328.timeweb.ru port 22: Connection timed out` x5, runner IP 20.51.206.83. Envs/key/dist-resolution all fine (failure is TCP, before auth) — NOT a key problem.
 - **Diagnosis**: identical signature to the 2026-11-03 plst@web failure (then 172.172.237.185). Verified now: port 22 open 3/3 from the user's machine, and 20.51.206.83 IS in GitHub's official actions ranges (api.github.com/meta). Conclusion: Timeweb drops inbound SSH from GitHub/datacenter IP ranges; affects BOTH VH deploy workflows (web + back). Host-side fix required.
 - **Status**: reported to user; options — Timeweb panel/support (SSH source restrictions, DC-range blocking), or a deploy path that avoids inbound SSH (pull-based). No code change; the workflows are correct.
+- **Resolution (same day)**: re-triggering the deploy fixed it — new runner IP 4.242.196.92 connected on attempt 1, rsync synced the whole app, passenger restart ran. So the Timeweb SSH block is per-IP flakiness (some runner IPs pass, some are dropped), not a range-wide ban; re-dispatch = new IP = the fix. Recorded as a gotcha in know/entries/deploy-slave.md. feat is now deployed to the VH slot.
+
+## 2026-11-04 (5)
+- **Bug 1**: python app rsynced into `feat` but the panel site serves `feat/public_html` — path is per-project data, not code: feat's `REVERSED_PROXY_SLOT` in safe must be set to `feat/public_html` (plst works because its value `plst` matches its site root). No new env needed; user updates the value in safe.
+- **Bug 2**: no WSGI entry — added `back/index.wsgi` (Passenger convention: exposes `application`, imports the Flask app). Host-side note: the panel's python env must have flask installed (pip install -r requirements.txt in the slot).
+- **Status**: index.wsgi added and committed (bump rides); deploy with -d after the safe path fix.
