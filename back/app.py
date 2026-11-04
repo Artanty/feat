@@ -1,6 +1,5 @@
 """feat — runtime web-component library.
 
-
 Serves per-feature bundles so that every version of every feature stays
 accessible at all times:
 
