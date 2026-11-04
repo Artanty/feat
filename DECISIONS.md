@@ -27,3 +27,8 @@
 ## 2026-11-04 (3)
 - **Task**: restructure to pipeline shape: app → `back/` (+ pyproject.toml version, no package.json), `build/` with local githooklib (`file:../../githooklib`), branch master; router gains Cache-Control (versioned URLs immutable 1y, /latest + /manifest.json no-cache).
 - **Status**: Done (committed locally: "restructure to pipeline shape", "pipeline shape: back/ + pyproject, cache-control headers" — pyproject auto-bumped 0.0.1→0.0.3 via hooks; no -d, no push). Layout: back/{app.py,requirements.txt,features/,pyproject.toml}, build/ (githooklib file:../../githooklib, hooks active via ../githooklib/hooks realpath), master branch. Cache-Control live-verified: /version-display/v1/ → immutable 1y; /latest, /manifest.json, / → no-cache. Flask re-verified from back/ layout.
+
+## 2026-11-04 (4)
+- **Event**: first real VH-back deploy of feat failed in the slave workflow — `ssh: connect to host vh328.timeweb.ru port 22: Connection timed out` x5, runner IP 20.51.206.83. Envs/key/dist-resolution all fine (failure is TCP, before auth) — NOT a key problem.
+- **Diagnosis**: identical signature to the 2026-11-03 plst@web failure (then 172.172.237.185). Verified now: port 22 open 3/3 from the user's machine, and 20.51.206.83 IS in GitHub's official actions ranges (api.github.com/meta). Conclusion: Timeweb drops inbound SSH from GitHub/datacenter IP ranges; affects BOTH VH deploy workflows (web + back). Host-side fix required.
+- **Status**: reported to user; options — Timeweb panel/support (SSH source restrictions, DC-range blocking), or a deploy path that avoids inbound SSH (pull-based). No code change; the workflows are correct.
