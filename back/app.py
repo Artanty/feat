@@ -1,29 +1,42 @@
-"""feat — runtime web-component library.
+"""feat — runtime feature library.
 
+One concept only: a feature. A feature version may ship several
+namespace implementations at once (ns is a free-form path part, e.g.
+js-web, js-node, py — not a constant):
 
-Serves per-feature bundles so that every version of every feature stays
-accessible at all times:
-
-    GET /<feature>/v<n>/          -> that version's index.js (canonical URL)
-    GET /<feature>/v<n>/index.js  -> same, explicit form
-    GET /<feature>/v<n>/<file>    -> any real file in the version dir
-    GET /<feature>/latest         -> 302 to the newest v<n>/
-    GET /manifest.json            -> {feature: {versions: [...], latest: n}}
+    GET /<feature>/v<n>/<ns>/       -> that namespace's entry (index.*)
+    GET /<feature>/v<n>/<ns>/<file> -> any real file in the namespace dir
+    GET /<feature>/latest/<ns>      -> 302 to newest v<n> containing <ns>
+    GET /<feature>/latest           -> 302 to newest v<n> (single ns only)
+    GET /                            -> index page: features / versions / ns
     GET /healthz
 
-Feature responses carry Access-Control-Allow-Origin: * — consumers are
-deployed apps on other hosts, so the bundles must be cross-origin loadable.
+No manifest: the deployed tree IS the enabled set (toggle happens on
+deploy, and each consuming project keeps its own list of what it loads).
+Consumers discover versions by following /latest/<ns> redirects.
+
+Versioned URLs are immutable (cached 1y); /latest and / are no-cache so
+flips propagate on the next request. Feature responses carry
+Access-Control-Allow-Origin: * — consumers are deployed apps on other
+hosts, so bundles must be cross-origin loadable.
 """
 
 import re
 from html import escape
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, redirect, request, send_from_directory
+from flask import Flask, abort, redirect, request, send_from_directory
 
 FEATURES_DIR = Path(__file__).resolve().parent / "features"
 VERSION_RE = re.compile(r"^v(\d+)$")
-JS_MIMES = {".js": "text/javascript", ".mjs": "text/javascript", ".map": "application/json"}
+# namespace is intentionally not a constant list — only path safety matters
+PATH_SEGMENT_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
+JS_MIMES = {
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".map": "application/json",
+    ".py": "text/x-python",
+}
 
 app = Flask(__name__)
 
@@ -41,7 +54,7 @@ def add_cors(response):
 
 
 def feature_dir(feature: str) -> Path:
-    if not re.fullmatch(r"[a-z0-9-]+", feature):
+    if not PATH_SEGMENT_RE.fullmatch(feature):
         abort(404)
     path = FEATURES_DIR / feature
     if not path.is_dir():
@@ -57,26 +70,61 @@ def versions_of(feature: str) -> list[int]:
     )
 
 
-@app.get("/<feature>/v<int:n>/")
-@app.get("/<feature>/v<int:n>/index.js")
-def feature_entry(feature: str, n: int):
-    directory = feature_dir(feature) / f"v{n}"
-    if not (directory / "index.js").is_file():
+def ns_dir(feature: str, n: int, ns: str) -> Path:
+    if not PATH_SEGMENT_RE.fullmatch(ns):
         abort(404)
-    request.versioned_feature = True
-    return send_from_directory(directory, "index.js", mimetype="text/javascript")
-
-
-@app.get("/<feature>/v<int:n>/<path:filename>")
-def feature_file(feature: str, n: int, filename: str):
-    directory = feature_dir(feature) / f"v{n}"
+    directory = feature_dir(feature) / f"v{n}" / ns
     if not directory.is_dir():
         abort(404)
-    suffix = Path(filename).suffix
-    mimetype = JS_MIMES.get(suffix)
+    return directory
+
+
+def entry_file(directory: Path) -> Path:
+    """The namespace's entry: exactly one file named index.* (ambiguity -> 500)."""
+    entries = [p for p in directory.iterdir() if p.is_file() and p.name.startswith("index.")]
+    if not entries:
+        abort(404)
+    if len(entries) > 1:
+        abort(500, description=f"multiple index.* entries in {directory}")
+    return entries[0]
+
+
+def namespaces_of(version_dir: Path) -> list[str]:
+    return sorted(
+        d.name for d in version_dir.iterdir()
+        if d.is_dir() and PATH_SEGMENT_RE.fullmatch(d.name)
+    )
+
+
+@app.get("/<feature>/v<int:n>/<ns>/")
+def feature_entry(feature: str, n: int, ns: str):
+    directory = ns_dir(feature, n, ns)
+    entry = entry_file(directory)
+    request.versioned_feature = True
+    return send_from_directory(
+        directory, entry.name, mimetype=JS_MIMES.get(entry.suffix)
+    )
+
+
+@app.get("/<feature>/v<int:n>/<ns>/<path:filename>")
+def feature_file(feature: str, n: int, ns: str, filename: str):
+    directory = ns_dir(feature, n, ns)
     request.versioned_feature = True
     # send_from_directory rejects traversal ("../") on its own
-    return send_from_directory(directory, filename, mimetype=mimetype)
+    return send_from_directory(
+        directory, filename, mimetype=JS_MIMES.get(Path(filename).suffix)
+    )
+
+
+@app.get("/<feature>/latest/<ns>")
+def feature_latest_ns(feature: str, ns: str):
+    if not PATH_SEGMENT_RE.fullmatch(ns):
+        abort(404)
+    # newest version that actually ships this namespace
+    for n in reversed(versions_of(feature)):
+        if (feature_dir(feature) / f"v{n}" / ns).is_dir():
+            return redirect(f"/{feature}/v{n}/{ns}/", code=302)
+    abort(404)
 
 
 @app.get("/<feature>/latest")
@@ -84,22 +132,13 @@ def feature_latest(feature: str):
     versions = versions_of(feature)
     if not versions:
         abort(404)
-    return redirect(f"/{feature}/v{versions[-1]}/", code=302)
-
-
-@app.get("/manifest.json")
-def manifest():
-    result = {}
-    if FEATURES_DIR.is_dir():
-        for d in FEATURES_DIR.iterdir():
-            if d.is_dir():
-                versions = versions_of(d.name)
-                if versions:
-                    result[d.name] = {
-                        "versions": [f"v{n}" for n in versions],
-                        "latest": f"v{versions[-1]}",
-                    }
-    return jsonify(result)
+    ns_list = namespaces_of(feature_dir(feature) / f"v{versions[-1]}")
+    if len(ns_list) != 1:
+        abort(
+            404,
+            description="latest is ambiguous — use /<feature>/latest/<ns>",
+        )
+    return redirect(f"/{feature}/v{versions[-1]}/{ns_list[0]}/", code=302)
 
 
 @app.get("/healthz")
@@ -117,25 +156,39 @@ def index():
             versions = versions_of(d.name)
             if not versions:
                 continue
-            cells = "".join(
-                f'<tr><td><a href="/{escape(d.name)}/v{n}/">v{n}</a></td>'
-                f'<td><code>&lt;script src="/{escape(d.name)}/v{n}/"&gt;&lt;/script&gt;</code></td></tr>'
-                for n in versions
-            )
+            cells = []
+            for n in versions:
+                for ns in namespaces_of(FEATURES_DIR / d.name / f"v{n}"):
+                    path = f"/{d.name}/v{n}/{ns}/"
+                    entry = (
+                        f'<code>&lt;script src="{escape(path)}"&gt;&lt;/script&gt;</code>'
+                        if ns.startswith("js")
+                        else f'<code>GET {escape(path)}</code>'
+                    )
+                    cells.append(
+                        f"<tr><td>v{n}</td><td>{escape(ns)}</td>"
+                        f"<td><a href='{escape(path)}'>{escape(path)}</a></td>"
+                        f"<td>{entry}</td></tr>"
+                    )
+            latest_ns = [
+                f'<a href="/{escape(d.name)}/latest/{escape(ns)}">latest/{escape(ns)}</a>'
+                for ns in namespaces_of(FEATURES_DIR / d.name / f"v{versions[-1]}")
+            ]
             rows.append(
                 f"<h2>{escape(d.name)}</h2>"
-                f'<p>latest: <a href="/{escape(d.name)}/latest">/{escape(d.name)}/latest</a></p>'
-                f"<table><tr><th>version</th><th>connect</th></tr>{cells}</table>"
+                f"<p>latest: {' &middot; '.join(latest_ns)}</p>"
+                "<table><tr><th>version</th><th>namespace</th><th>url</th>"
+                f"<th>connect</th></tr>{''.join(cells)}</table>"
             )
     body = "\n".join(rows) or "<p>No features published yet.</p>"
     return (
         "<!doctype html><html><head><meta charset='utf-8'><title>feat</title><style>"
-        "body{font:14px/1.5 system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem}"
+        "body{font:14px/1.5 system-ui,sans-serif;max-width:780px;margin:2rem auto;padding:0 1rem}"
         "table{border-collapse:collapse;margin-bottom:1rem}td,th{border:1px solid #ccc;"
         "padding:4px 10px;text-align:left}code{background:#f4f4f4;padding:1px 4px;border-radius:3px}"
-        "</style></head><body><h1>feat — web-component library</h1>"
+        "</style></head><body><h1>feat — feature library</h1>"
         f"{body}"
-        "<p><a href='/manifest.json'>manifest.json</a></p></body></html>"
+        "</body></html>"
     )
 
 
