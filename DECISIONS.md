@@ -369,3 +369,16 @@ itself is dependency-free apart from node:net. Consumer (plst) vendored via its
 `features:sync` script and proved the port with its full 121-test backend suite + tsc.
 README rewritten: SDD rules, namespaces, spec-first workflow. Python implementations (`py/`
 namespaces) arrive with plst's back-py.
+
+## 2026-11-08 (2) — PLAN: version-display v4 — badge shows only the version
+User request from plst: initial badge state = version only, no project. v4 = v3's shell
+(index.js, fallback renderer renamed and aligned) + render.js with one-liner `v<version>`;
+project (and namespace/commit/repo) become click-expand rows. RESULT below.
+
+### RESULT — version-display v4: badge one-liner = version only
+`features/version-display/v4/js-web/` — index.js shell as v3 (fallback renderer renamed to
+renderV4 and aligned), render.js: one-liner `'v' + version`, rows now lead with `project`.
+node --check + module import clean; 26/26 js-node contract tests unaffected. Verified through
+plst's slot flow in a real browser (local feat): badge `v1.0.17.0.0.28`, expand shows
+project/namespace. Not deployed — next feat `-d` commit ships it; consumers pinning v3 keep the
+old one-liner (contract intact).
