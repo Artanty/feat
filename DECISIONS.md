@@ -221,6 +221,33 @@
   banner. Note: `requirements.txt`, `pyproject.toml`, `index.wsgi` are downloadable (minor
   info leak); `.py`/`.env` are already 403'd by nginx rules.
 
+## 2026-11-07 (5) — RESULT: "Forbidden" on / — no Passenger on this host at all; wsgi-script .htaccess is the real serving pattern
+
+Follow-up to (4): user saw Apache "Forbidden" on `https://feat.twc1.net/`. Probes: `/` 403,
+`/healthz` 404, `/index.wsgi` **200 RAW SOURCE** — all iso-8859-1 (Apache static, no app
+execution). Host investigation: NO passenger module anywhere (no binary, no apache mod, no
+process); the only WSGI site that works here is **pyxy**, and it doesn't use Passenger either
+— its `.htaccess` uses Apache's `wsgi-script` handler: `AddHandler wsgi-script .wsgi` +
+rewrite `^(.*)$ → /index.wsgi/$1` when the file doesn't exist, `index.wsgi` chmod 755
+(the handler runs it like CGI). The `touch tmp/restart.txt` convention is a Passenger
+thing and is a no-op here — restarts happen because mod_wsgi re-imports when the script
+changes (mtime) or by panel action.
+
+**Fix applied and LIVE-verified:**
+- Host: wrote `feat/public_html/.htaccess` (pyxy's pattern verbatim) + `chmod 755 index.wsgi`.
+  Immediately after: `/healthz` → **200** (Flask, utf-8), `/version-display/latest/js-web` →
+  **302 → /v2/js-web/**, `/v1/js-web/` → 200 text/javascript with
+  `cache-control: public, max-age=31536000, immutable` + `access-control-allow-origin: *`,
+  `/latest` → `cache-control: no-cache`. The whole feat contract works on production.
+- Repo: `back/.htaccess` added (same content) and `index.wsgi` mode set 755 so rsync
+  (`-rltgoD` preserves perms) ships both on every deploy. `.py`/`.env` stay blocked by the
+  nginx rules; `.wsgi` source being fetchable is now moot (the URL executes the app, only
+  reachable as `/index.wsgi/<path>` which the app routes).
+- know deploy-slave entry updated: Timeweb VH serves python via wsgi-script htaccess, not
+  Passenger; restart.txt is best-effort/no-op.
+
+Nothing committed (rule 5).
+
 ## 2026-11-07 (4) — RESULT: pip-less host solved with slot venv; only the panel site-type is left
 
 Done, nothing committed (rule 5).
@@ -281,3 +308,38 @@ and pyxy's `index.wsgi` does `sys.path.append(…/venv/lib/python3.6/site-packag
   So the checklist item "install flask into the panel env" from (2) is now automated —
   next `-d` deploy installs deps itself. Only remaining manual host step: panel app type =
   Python/Passenger + startup file `index.wsgi`. know entries (deploy-slave, feat) updated.
+
+## 2026-11-07 (6) — dynamic deploy-info v3 + manifest.json back (requested from plst integration)
+
+plst wanted the integration dynamic (user: "i dont like that we know a lot about its work").
+Discovery: the live router had **no /manifest.json** (docstring even said "No manifest"; the
+know entry was stale — it described the pre-pipeline standalone app.py). Re-added it, plus a
+new **v3** element that makes consumers one-attribute-thin. No router changes otherwise;
+v1/v2 untouched (verified live: v1 200 immutable, latest 302).
+
+1. `back/app.py`: `GET /manifest.json` → `{features: {<name>: {versions: [vN…], latest: vN}}}`
+   (after_request default = no-cache; CORS `*`). Docstring updated (manifest is real again).
+2. `features/version-display/v3/js-web/` — split contract:
+   - **index.js = stable shell**, defines `<deploy-info>` once (`customElements.get` guard —
+     a web-component class can never be redefined, which is WHY logic upgrades ride a module
+     instead of a new script). Attributes: `src` (runtime JSON endpoint
+     `{version, project, namespace, commit, repo}`), `manifest` (feat manifest URL),
+     `refresh` (poll seconds, default 300, 0=off), legacy direct attrs still honored;
+     precedence direct attr > src > defaults; `project` falls back to hostname's first label;
+     silent without a real version (0.0.0(.0)), unchanged.
+   - **render.js = swappable logic** (ES module, `export function render(shadowRoot, data)`,
+     markup = v2's). The shell adopts the manifest's `latest` render.js at connect and
+     re-adopts on every poll when `latest` moves — toggle without consumer redeploy, no
+     element redefinition. The built-in fallback renderer inlined in index.js must stay
+     byte-compatible with render.js markup (degrades to the same UI on any fetch failure).
+3. **Live-proven end to end** (browser, local feat :5000 + plst back :3299): element fetched
+   the version from plst's `/api/version` (real `1.0.16.0.0.27` read from plst's build/.env),
+   derived project from hostname, adopted the latest render module, and **hot-swapped to a
+   temporary v4 renderer within one 1s poll cycle without reload**; v4 removed after the test.
+   `node --check` + module import clean; v1/v2 regression-checked.
+
+Consumer contract now (see know/entries/feat.md):
+`<script src="https://feat.twc1.net/version-display/v3/js-web/"></script>` +
+`<deploy-info src="/api/version" manifest="https://feat.twc1.net/version-display/manifest.json">`.
+Nothing committed (rule 5); **user step: `-d` commit on feat** — plst's badge stays dark until
+v3 is live.

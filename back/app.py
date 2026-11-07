@@ -8,12 +8,12 @@ js-web, js-node, py — not a constant):
     GET /<feature>/v<n>/<ns>/<file> -> any real file in the namespace dir
     GET /<feature>/latest/<ns>      -> 302 to newest v<n> containing <ns>
     GET /<feature>/latest           -> 302 to newest v<n> (single ns only)
+    GET /manifest.json              -> {features: {name: {versions, latest}}}
     GET /                            -> index page: features / versions / ns
     GET /healthz
 
-No manifest: the deployed tree IS the enabled set (toggle happens on
-deploy, and each consuming project keeps its own list of what it loads).
-Consumers discover versions by following /latest/<ns> redirects.
+The deployed tree IS the enabled set; /manifest.json is its machine-readable
+view for consumers that poll (toggle) instead of following /latest redirects.
 
 Versioned URLs are immutable (cached 1y); /latest and / are no-cache so
 flips propagate on the next request. Feature responses carry
@@ -158,6 +158,30 @@ def feature_latest(feature: str):
             description="latest is ambiguous — use /<feature>/latest/<ns>",
         )
     return redirect(f"/{feature}/v{versions[-1]}/{ns_list[0]}/", code=302)
+
+
+@app.get("/manifest.json")
+def manifest():
+    """Feature -> versions/latest, the toggle-discovery document.
+
+    Consuming shells (e.g. deploy-info v3) poll this and hot-swap their render
+    module when `latest` moves, so a feature release takes effect without the
+    consumer being redeployed. No-cache (the after_request default) so every
+    poll revalidates.
+    """
+    features = {}
+    if FEATURES_DIR.is_dir():
+        for d in sorted(FEATURES_DIR.iterdir()):
+            if not d.is_dir():
+                continue
+            versions = versions_of(d.name)
+            if not versions:
+                continue
+            features[d.name] = {
+                "versions": [f"v{n}" for n in versions],
+                "latest": f"v{versions[-1]}",
+            }
+    return {"features": features}
 
 
 @app.get("/healthz")
