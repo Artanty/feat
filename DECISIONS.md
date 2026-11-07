@@ -343,3 +343,29 @@ Consumer contract now (see know/entries/feat.md):
 `<deploy-info src="/api/version" manifest="https://feat.twc1.net/version-display/manifest.json">`.
 Nothing committed (rule 5); **user step: `-d` commit on feat** — plst's badge stays dark until
 v3 is live.
+
+## 2026-11-07 (7) — PLAN: SDD seed — spec/ + server features (logging, db-diag) from plst
+
+plst is rewriting its backend to python and wants feat to be the canonical, spec-driven home
+of reusable server modules. feat gains `back/spec/` (markdown contracts) and two features with
+`js-node` namespaces ported from plst's `back/src/lib` (logging = logger + ext-log, db-diag),
+plus node:test contract tests (run `node --test back/test/`; NO package.json — it would flip
+githooklib versioning from pyproject to npm). Python implementations arrive later for back-py.
+plst vendors the js-node bundles via `back/scripts/sync-features.mjs` and proves them with its
+own 121-test suite. RESULT below.
+
+### RESULT — SDD seed in place: spec/ + logging + db-diag, 26/26 contract tests
+
+Done, nothing committed (rule 5). `back/spec/` (logging.md, db-diag.md — contracts with
+consumer-vendoring sections), `features/logging/v1/js-node/` (logger.js, ext-log.js + d.ts;
+index.js is router-entry only, NOT vendored) and `features/db-diag/v1/js-node/` (dbDiag.js +
+d.ts) — verbatim ports of plst's back/src/lib, same export names. `back/test/` — 26 node:test
+contract tests, **26/26 green** (`node --test 'back/test/*.test.mjs'`; NO package.json in
+back/ — it would flip githooklib versioning from pyproject to npm). Router live-checked:
+`/logging/v1/js-node/` 200, `/db-diag/v1/js-node/` 200, extra-file route 200. One design
+improvement: `checkDatabase` lazy-imports mysql2 at CALL time (feat has no node_modules;
+missing package → classified `unknown` verdict naming the dep, not a load crash) — the module
+itself is dependency-free apart from node:net. Consumer (plst) vendored via its
+`features:sync` script and proved the port with its full 121-test backend suite + tsc.
+README rewritten: SDD rules, namespaces, spec-first workflow. Python implementations (`py/`
+namespaces) arrive with plst's back-py.
