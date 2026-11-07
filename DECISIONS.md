@@ -145,3 +145,40 @@
   terminal 2 `cd test/angular && npm start`, open http://localhost:4200 — the badge appears
   only after the runtime fetch resolves. e2e: `cd test/angular && npm run test:e2e`
   (boots both servers itself).
+
+## 2026-11-07
+- **Task**: extend `version-display` to show serf-provided deploy envs:
+  - **initial (collapsed) state**: show ONLY `TAG_VERSION`, format `v1.2.3.4.5.6`
+    (serf: `TAG_VERSION=` `git_tag` input → `.env`);
+  - **full info (expanded table)**: `TECH_STACK` (new serf detect-tech-stack step) +
+    'slave repo' (`TARGET_GIT_REPO` from safe) + 'slave source' (`TARGET_GIT_USER` from safe),
+    alongside the existing project/namespace/version/commit/repo.
+  - Values reach the browser as attributes on `<deploy-info>` — the consuming page's job
+    (server renders them from `.env`); the feature only displays.
+- **Plan**: 1) record here; 2) NEW `back/src/version-display/v2/js-web/index.js` (v1 is
+  published — never edited in place): attrs `tag-version, tech-stack, slave-repo,
+  slave-source` added; badge = `v<tag-version>` only (fallback to old one-liner when no tag);
+  silent when neither tag nor real version (dev-version check kept); expanded table lists
+  every present attr except `tag-version` (it's the badge); 3) publish copy →
+  `back/features/version-display/v2/`; 4) angular consumer passes the new attrs
+  (tag-version `1.2.3.4.5.6`, tech-stack `angular`, slave-repo/slave-source samples);
+  5) e2e: `/latest/js-web` now resolves to **v2**, badge asserts `v1.2.3.4.5.6`, detail
+  asserts the new rows; 6) run e2e, stop servers, record status.
+- **Status**: Done, nothing committed. `back/src/version-display/v2/js-web/index.js` (v1
+  untouched, still published): attrs `tag-version, tech-stack, slave-repo, slave-source` added;
+  **badge = only `normalizeTag(tag-version)` → `v1.2.3.4.5.6`** (prepends `v` if serf's
+  `git_tag` lacks it), fallback to v1's `project@namespace vversion` one-liner when no tag,
+  silent when neither tag nor real version (v1 dev-version rule kept); expanded table lists
+  `project, namespace, version, commit, repo, tech-stack, slave-repo, slave-source` — labels
+  rendered with spaces (`tech stack`, `slave repo`, `slave source`), tag row excluded (it IS
+  the badge); single `esc()` at insertion point (no mixed escaped/unescaped branches).
+  Published copy in sync (`diff -r` clean), `node --check` OK. Angular consumer
+  `app.html` passes sample serf values (`tag-version="1.2.3.4.5.6" tech-stack="angular"
+  slave-repo="artserf/feat" slave-source="artserf"`) with a comment that a real app renders
+  these attrs server-side from `.env` (serf writes `TAG_VERSION`/`TECH_STACK`/`SLAVE_REPO` +
+  safe's `TARGET_GIT_USER`/`TARGET_GIT_REPO`). e2e updated: `/latest/js-web` → **v2**,
+  badge asserts `v1.2.3.4.5.6`, detail asserts `tech stack`/`slave repo`/`slave source` rows
+  + values, and `not.toContainText('tag version')`. Config: `reuseExistingServer:
+  !process.env.CI` for :4200 (user runs `ng serve` manually for the prod-like flow; CI boots
+  its own). **1 passed**. User had BOTH servers running manually (ng serve :4200 + flask
+  :5099) — left running deliberately (their session, rule 4 applies to servers I start).

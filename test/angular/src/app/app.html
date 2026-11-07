@@ -5,13 +5,20 @@
   loaded <strong>at runtime by request</strong>: the app fetches
   <code>/version-display/latest/js-web</code>, follows the redirect, and injects the
   resulting immutable bundle as a script (see <code>feat-loader.ts</code>).
+  Initial state shows only the tag version; click it for full info.
 </p>
 
 <p>Resolved bundle: <code id="feature-url">{{ featureUrl() }}</code></p>
 
+<!-- in a real app these attributes are rendered server-side from .env
+     (TAG_VERSION, TECH_STACK, TARGET_GIT_REPO, TARGET_GIT_USER — written by serf) -->
 <deploy-info
   project="feat"
   namespace="angular-test"
   version="1.2.3"
+  tag-version="1.2.3.4.5.6"
+  tech-stack="angular"
+  slave-repo="artserf/feat"
+  slave-source="artserf"
   commit="e2e0001"
   repo="feat"></deploy-info>

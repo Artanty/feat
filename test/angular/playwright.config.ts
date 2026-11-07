@@ -19,7 +19,9 @@ export default defineConfig({
     {
       command: 'npm start',
       port: 4200,
-      reuseExistingServer: false,
+      // reuse a manually started `ng serve` (the "run it like prod" flow);
+      // CI always boots its own
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
   ],
