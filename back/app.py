@@ -21,11 +21,23 @@ Access-Control-Allow-Origin: * — consumers are deployed apps on other
 hosts, so bundles must be cross-origin loadable.
 """
 
+import logging
 import re
+import sys
 from html import escape
 from pathlib import Path
 
 from flask import Flask, abort, redirect, request, send_from_directory
+
+# stderr → Passenger/panel log (or console when run directly);
+# index.wsgi configures the root logger, this covers plain `python app.py` too
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="[feat] %(asctime)s %(levelname)s %(message)s",
+    )
+log = logging.getLogger("feat")
 
 FEATURES_DIR = Path(__file__).resolve().parent / "features"
 VERSION_RE = re.compile(r"^v(\d+)$")
@@ -39,6 +51,13 @@ JS_MIMES = {
 }
 
 app = Flask(__name__)
+
+
+@app.after_request
+def log_request(response):
+    # one line per request → Passenger/panel log; visible proof the app executed
+    log.info("%s %s -> %s", request.method, request.path, response.status_code)
+    return response
 
 
 @app.after_request
@@ -193,6 +212,12 @@ def index():
 
 
 if __name__ == "__main__":
+    features = (
+        sorted(d.name for d in FEATURES_DIR.iterdir() if d.is_dir())
+        if FEATURES_DIR.is_dir()
+        else []
+    )
+    log.info("starting dev server — features_dir=%s features=%s", FEATURES_DIR, features or "NONE")
     app.run(debug=True)
 # pipeline marker
 # npm-copy check

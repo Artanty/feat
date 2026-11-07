@@ -182,3 +182,49 @@
   !process.env.CI` for :4200 (user runs `ng serve` manually for the prod-like flow; CI boots
   its own). **1 passed**. User had BOTH servers running manually (ng serve :4200 + flask
   :5099) — left running deliberately (their session, rule 4 applies to servers I start).
+
+## 2026-11-07 (2)
+- **Bug**: `https://feat.twc1.net/healthz` → nginx 404; `/` → nginx 403.
+- **Diagnosis (probed live, read-only)**: the site serves the deployed app dir as a STATIC
+  site — Passenger/WSGI never runs. Evidence: `/index.wsgi` → 200 RAW SOURCE with
+  `etag`/`accept-ranges` (nginx static module); `/features/version-display/v2/js-web/index.js`
+  → 200 static (files ARE in docroot — today's rsync landed correctly); 404 pages are
+  nginx's ("not found on this server", not werkzeug's), `/` 403 = no index.html + autoindex
+  off. `app.py`/`.env` 403 = nginx deny rules (`.py`, dotfiles) — cannot conclude .env
+  exists. `/back/app.py` 404 → app files are at docroot root, not under back/. CONCLUSION:
+  host-side panel misconfig (site type = static), NOT nginx routing and NOT app code.
+  Logs can't show anything until Passenger executes the app — current evidence already
+  pinpoints the misconfig.
+- **Plan**: 1) record here; 2) add the requested logs for the NEXT round: `index.wsgi`
+  basicConfig(stderr) + try/except around import → `logging.exception(...)` + re-raise (so a
+  broken import lands in the panel/Passenger log instead of being invisible), startup banner
+  with features dir + feature list; `app.py`: per-request access log line
+  (`method path → status`) at INFO to stderr; 3) local verify (import wsgi + one boot/curl/kill
+  cycle — stop server after, rule 4); 4) report panel checklist to user (host action, I have
+  no panel access): site → app type Python/Passenger, startup file `index.wsgi`, install
+  flask in panel env, restart, then curl /healthz; note minor exposure (requirements.txt,
+  pyproject.toml, index.wsgi downloadable).
+- **Status**: Done, nothing committed. `back/index.wsgi`: basicConfig(stderr) +
+  try/except around import → `logging.exception("WSGI import FAILED …")` + re-raise (import
+  crash now lands in Passenger/panel log instead of vanishing) + startup banner
+  (`WSGI app loaded OK — features_dir=… features=[…]` / `NONE (check deploy!)`).
+  `back/app.py`: root-logger basicConfig when run standalone, `log_request` after_request
+  (`GET /healthz -> 200` per request → stderr) + dev-server startup banner with feature list.
+  Verified locally: `runpy.run_path('index.wsgi')` → banner + `application loaded: app`;
+  boot/curl/kill on :5098 (user's :5099 untouched) → healthz 200, latest 302→200, /nope 404,
+  all visible in `[feat]` log lines; :5098 stopped after (rule 4). USER ACTION (host-side,
+  I have no panel access) to make /healthz work: Timeweb panel → site feat.twc1.net →
+  application type must be **Python (Passenger)** (currently static — that's the whole bug),
+  startup file `index.wsgi`, install flask into the panel python env
+  (`pip install -r requirements.txt` in the slot), restart, then
+  `curl -f https://feat.twc1.net/healthz` + check panel log for the `[feat] WSGI app loaded OK`
+  banner. Note: `requirements.txt`, `pyproject.toml`, `index.wsgi` are downloadable (minor
+  info leak); `.py`/`.env` are already 403'd by nginx rules.
+
+## 2026-11-07 (3) — manual pip one-timer → pipeline-managed
+- **Change (in serf, see serf/DECISIONS.md 2026-11-07)**: serf's generated VH-python
+  `vh-deploy.yml` now runs `pip install -r requirements.txt` in the slot over the deploy SSH
+  (after rsync, before restart; failure = job error, NO restart → previous app keeps serving).
+  So the checklist item "install flask into the panel env" from (2) is now automated —
+  next `-d` deploy installs deps itself. Only remaining manual host step: panel app type =
+  Python/Passenger + startup file `index.wsgi`. know entries (deploy-slave, feat) updated.
