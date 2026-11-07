@@ -221,6 +221,59 @@
   banner. Note: `requirements.txt`, `pyproject.toml`, `index.wsgi` are downloadable (minor
   info leak); `.py`/`.env` are already 403'd by nginx rules.
 
+## 2026-11-07 (4) — RESULT: pip-less host solved with slot venv; only the panel site-type is left
+
+Done, nothing committed (rule 5).
+- **`back/requirements.txt`**: `flask>=3.0` → `flask>=2.0` (pip's Requires-Python metadata
+  resolves Flask 2.0.3 on the host's py3.6, latest 3.x locally — no upper pin needed).
+- **`back/index.wsgi`**: appends `venv/lib/python*/site-packages` to sys.path when `venv/`
+  exists in the slot (pyxy pattern — verified: host-side import logs
+  `venv site-packages appended` + `WSGI app loaded OK — features=['version-display']`).
+- **`back/app.py`**: `-> list[int]` / `-> list[str]` quoted as strings — py3.6 can't parse
+  PEP-585 generics (and `from __future__ import annotations` needs 3.7+, so string literals
+  are the only 3.6-safe form). Found live on the host (`TypeError: 'type' object is not
+  subscriptable`), not by review.
+- **serf `deploy.yml` VH-python pip step**: creates `venv` in the slot when missing with
+  `python3 -m virtualenv -p "$(command -v python3)" venv` → `virtualenv -p …` → `python3 -m venv`
+  (plain `-m venv` is broken on this host: no ensurepip; bare `virtualenv` picks python2 —
+  both hit live), then `venv/bin/pip install -r requirements.txt` first, old fallbacks kept.
+- **Host fixed for now (SSH over jump)**: `venv` built in `feat/public_html`,
+  Flask 2.0.3 + Werkzeug 2.0.3 + Jinja2 3.0.3 installed, `tmp/restart.txt` touched.
+- **Verified live**: wsgi imports OK on the host shell. **`https://feat.twc1.net` still
+  serves the slot STATIC** (`/index.wsgi` → 200 raw source) — the panel site type is still
+  not Python/Passenger, so restart.txt is a no-op. Curl fails from this Mac only because
+  the local resolver can't resolve `feat.twc1.net` (dig @1.1.1.1 → 185.114.247.197 works;
+  `curl --resolve` pinned OK). **USER ACTION (panel, no access from here): site feat.twc1.net
+  → application type Python (Passenger), startup file `index.wsgi`** — then
+  `curl -f https://feat.twc1.net/healthz` should be 200 and the panel log should show the
+  `[feat] WSGI app loaded OK` banner. Next `-d` deploy will also pass the pip step by itself.
+- Temp key copies pulled from safe for the SSH session were deleted after use.
+
+## 2026-11-07 (4) — PLAN: deploy fails — "No module named pip" on the VH host (python 3.6.9)
+
+**Event:** `-d` deploy rsynced fine (via jump), then died at the new pip step:
+`/usr/bin/python3: No module named pip; pip3: command not found; pip: command not found` —
+workflow correctly did NOT restart; previous (static) state keeps serving.
+
+**Probed live over the jump host (read-only):** host shell python is `/usr/bin/python3` = **3.6.9**,
+no pip/ensurepip anywhere; `flask>=3.0` in requirements.txt couldn't install even with pip
+(flask 3 needs py≥3.8). **Same box already has the proven pattern**: `~/pyxy/public_html/venv`
+(created by `virtualenv`, which exists at `/usr/bin/virtualenv`) holds pip 21.3.1 + Flask 2.0.3,
+and pyxy's `index.wsgi` does `sys.path.append(…/venv/lib/python3.6/site-packages)`.
+
+**Plan:**
+1. `back/requirements.txt`: `flask>=3.0` → `flask>=2.0` (no upper pin — pip's Requires-Python
+   metadata picks 2.0.3 on the 3.6 host, latest 3.x locally).
+2. `back/index.wsgi`: insert `venv/lib/pythonX.Y/site-packages` into sys.path when `venv/`
+   exists next to the slot (pyxy pattern), before importing app.
+3. serf VH-python workflow: pip step prefers slot `venv/bin/pip`, creating `venv` first with
+   `python3 -m virtualenv` / `virtualenv` fallback (plain `python3 -m venv` is broken here —
+   no ensurepip).
+4. Immediate fix on the host (I have SSH): scp updated requirements.txt + index.wsgi, create
+   `~/feat/public_html/venv`, `venv/bin/pip install -r requirements.txt`, touch restart,
+   curl `/healthz`.
+5. Record results here + plst/DECISIONS.md; know entries updated.
+
 ## 2026-11-07 (3) — manual pip one-timer → pipeline-managed
 - **Change (in serf, see serf/DECISIONS.md 2026-11-07)**: serf's generated VH-python
   `vh-deploy.yml` now runs `pip install -r requirements.txt` in the slot over the deploy SSH

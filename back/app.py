@@ -81,7 +81,7 @@ def feature_dir(feature: str) -> Path:
     return path
 
 
-def versions_of(feature: str) -> list[int]:
+def versions_of(feature: str) -> "list[int]":
     return sorted(
         int(VERSION_RE.match(d.name).group(1))
         for d in feature_dir(feature).iterdir()
@@ -108,7 +108,7 @@ def entry_file(directory: Path) -> Path:
     return entries[0]
 
 
-def namespaces_of(version_dir: Path) -> list[str]:
+def namespaces_of(version_dir: Path) -> "list[str]":
     return sorted(
         d.name for d in version_dir.iterdir()
         if d.is_dir() and PATH_SEGMENT_RE.fullmatch(d.name)
