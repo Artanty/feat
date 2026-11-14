@@ -101,3 +101,32 @@ on :5477 shows manifest wake-up {latest: v3, versions: [v1,v2,v3]}, /wake-up/v3/
 homebrew 3.14). NOTE: /latest now serves v3 — plst consumers on /latest get the render-aware
 core automatically; v2 stays pinned-accessible. DECISIONS.md rotated this session (793 lines →
 current thread only, rest appended to DECISIONS-archive.md).
+
+## 2026-11-15 — PLAN: main-page dark mode (dark default)
+
+User request: add dark mode to `/`, dark by default, matching the existing docs pages.
+Plan: edit only `back/app.py`'s index response — dark default palette with `body.light`
+overrides, a theme toggle beside the version badge, and the same `feat-docs-theme`
+localStorage persistence/defaulting logic used by `/docs`. Verify the generated page and
+toggle behavior with Flask/browser checks; run the existing test suite and stop any dev
+server started for verification.
+
+## 2026-11-15 — RESULT: main-page dark mode shipped locally
+
+Done, nothing committed. `back/app.py` `/` now uses the same dark-default/light-optional
+palette as the docs pages, with themed links, tables, code, and a toggle beside the version
+badge. The toggle shares `feat-docs-theme` with `/docs`, defaults to dark, and persists the
+selected mode. Verification: Flask test-client markup assertions passed; live-page JavaScript
+checks passed for dark default, dark→light toggle, light persistence across reload, and return
+to dark; `py_compile`, 36 pytest tests, and all 64 Node tests passed; `git diff --check` clean.
+Desktop browser was unavailable, so behavior was verified against the live page with Node's
+VM plus DOM/localStorage stubs rather than a visual browser. Flask verification server stopped;
+port 5477 is free.
+
+## 2026-11-15 (2) — RESULT: stat@web wired as js-web consumer (all 4 features)
+
+stat web now loads wake-up v3 (manual, render way for stat-3lmc.onrender.com), bus v1,
+global-loading v1, http-gate v2, version-display v4 as baked bootstrap slots from the feat
+host (FEAT_URL env; local feat docs Consumers rows updated). Browser-verified against
+local feat :5477 (see stat/DECISIONS.md 2026-11-15 (2)). feat itself unchanged — no
+version bumps, docs-only edit.

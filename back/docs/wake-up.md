@@ -109,6 +109,7 @@ same v2 wake core as a plain module — attach it to `globalThis.featWakeUp`. MV
 - Direct mode polls `HEAD <base>/healthz` (the lightweight probe), not the bare origin.
 
 ## Consumers
+| stat | js-web (React web) | v3 manual + http-gate; wakes the Render back (render way, URL-parsed) |
 
 | project | language | notes |
 |---|---|---|

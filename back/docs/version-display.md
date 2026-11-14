@@ -36,6 +36,7 @@ None — display only. v3+ polls the manifest on `refresh` and hot-swaps its ren
 `app-version` — rendered in the app's header/footer chrome.
 
 ## Consumers
+| stat | js-web (React web) | `FeatureSlot slot="app-version"`; replaced the local corner version text |
 
 | project | language | notes |
 |---|---|---|

@@ -90,6 +90,7 @@ extension); `autoPatch` is absent (the ext calls `featGate.request` explicitly).
 state flows through `onState` too: pass the same callback to render "waking…" UI.
 
 ## Consumers
+| stat | js-web (React web) | gatedFetch in api.service; rules ERROR:503+NETWORK, recovery → wake-up v3 |
 
 | project | language | notes |
 |---|---|---|
