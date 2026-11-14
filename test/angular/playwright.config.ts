@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 // Boots both servers the test needs:
-//  - the feat router (flask, :5099, cwd back/)
+//  - the feat router (flask, :5477, cwd back/)
 //  - the Angular dev server (:4200)
 export default defineConfig({
   testDir: './e2e',
@@ -10,9 +10,9 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: '.venv/bin/python -c "from app import app; app.run(port=5099, use_reloader=False)"',
+      command: '.venv/bin/python -c "from app import app; app.run(port=5477, use_reloader=False)"',
       cwd: '../../back',
-      port: 5099,
+      port: 5477,
       reuseExistingServer: true,
       timeout: 30_000,
     },

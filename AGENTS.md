@@ -4,6 +4,9 @@
 2. **Before every code action** — write the planned next steps in `DECISIONS.md`.
 3. **After every code action** — write progress/results in `DECISIONS.md`.
 4. **Server lifecycle** — if I start the Flask app for dev, **stop it when the task is done**.
+5. **Rotate `DECISIONS.md` when it gets too big** — explicitly flag it to the user; at ~250
+   lines move everything except the current thread into `DECISIONS-archive.md` and leave a
+   one-line pointer in `DECISIONS.md`. Never delete history.
 
 ## Guidelines
 

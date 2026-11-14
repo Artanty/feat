@@ -1,5 +1,139 @@
 # DECISIONS
 
+## 2026-11-14 (7) — RESULT: wake-up v2 bus-late serve + plst wired (companion)
+
+Done, nothing committed. wake-up/v2 serveBus: if featBus is absent at connect, watches
+for it (250ms interval, bounded 80 tries ≈ 20s; unwatched on disconnect) — bundles load
+in any order by contract. Mirrored to features/, node --check ok, feat suite still green.
+Consumed by plst web same day (see plst/DECISIONS 2026-11-14): app-infra slot loads bus +
+global-loading + http-gate (script-only rows), app-init wake-up v2 manual; apiFetch goes
+through featGate; e2e verified the full chain in plst (park → one wake → retry).
+
+## 2026-11-14 (6) — RESULT: global-loading v1 + event-addressed bus requests, 37/37
+
+Done, nothing committed.
+1. **bus v1** (uncommitted → edited in place): `request(event, payload, opts)` — no `to`
+   param; routing was already by event (first serve() handler wins), `to` was cosmetic;
+   `opts.to` still available for directed requests. feature-contract.md updated. Naming
+   stays kebab-case (SCREAMING_CASE rejected — one dialect contract-wide).
+2. **global-loading/v1/js-web** (src mirrored) — listens the bus TRANSPORT directly
+   (document CustomEvents 'feat-bus', load-order independent, no featBus dependency);
+   counter-based: 'global-loading-start'/'global-loading-end' signals show/hide a
+   full-screen backdrop (z-index max, pointer-blocking, spinner + "loading…").
+   docs/global-loading.md added.
+3. **http-gate**: config `recovery:{event, payload}` (.feature dropped — bus addresses
+   by event); core gains optional `deps.signal(name)` (throw-safe: UI hint can never
+   break recovery) emitting global-loading-start/-end around every episode (resume OR
+   fail). Signals come from the GATE not wake-up (decoupling: mounted app-init wakes
+   must not block UI; any future provider gets the loader free). Spec + docs updated.
+4. **Tests**: 11 gate (new: loading-signal pair incl. end-on-fail) — **37/37** total.
+5. **Browser-verified** on :5477 (global-loading loaded FIRST, proving no bus dep):
+   bus log `signal:start → request:wake-up → response:wake-up → signal:end` — request
+   with NO address resolved fine; overlay visible mid-episode (slow fake backend —
+   first check raced a fast wake), elementFromPoint hit-tests at 3 points all land on
+   the overlay subtree (blocks interaction), hidden after resume AND on manual signal
+   pair. Servers stopped, ports free.
+
+## 2026-11-14 (6) — PLAN: global-loading feature + bus request without address
+
+User requests: (1) full-screen blocking loader while a recovery is pending, as a separate
+feature; (2) drop the explicit feature address in bus requests — event name is the address.
+Decisions: signals come from the GATE not wake-up (same decoupling argument — the gate
+knows traffic is paused; mounted app-init wakes must not block the UI); event names stay
+kebab-case (contract-wide convention, SCREAMING_CASE rejected — one naming style only).
+Plan: (a) bus v1 (uncommitted → edit in place): `request(event, payload, opts)` — no `to`
+param, routing was already by event; update feature-contract.md; (b) http-gate: config
+`recovery:{event, payload}` (drop .feature), core gains optional `deps.signal(name)` —
+begin/finish episode emit `global-loading-start`/`global-loading-end`; (c) NEW
+`global-loading/v1/js-web` — listens bus transport (document CustomEvents, load-order
+independent), counter-based show/hide, backdrop + spinner, z-index max; (d) docs:
+global-loading.md, http-gate spec+doc, wake-up.md bus lines; (e) tests update + add signal
+test; browser verify: request-without-address roundtrip + overlay appears during episode
+and blocks interaction. Servers stopped after.
+
+## 2026-11-14 (5) — RESULT: gate decoupled — generic bus-recovery interceptor, 36/36
+
+Done, nothing committed. Config `wake:{feature,target}` → `recovery:{feature, event,
+payload}` (payload passed VERBATIM, gate never inspects it); episode semantics
+payload-agnostic: bus request RESOLVES → resume (retry parked, release held), REJECTS/
+NO_HANDLER/timeout → fail episode (parked original response, held reject
+`FEAT_GATE_RECOVERY_FAILED` — renamed from FEAT_GATE_WAKE_FAILED, last wake-specific
+wording); gate states idle/recovering/resumed/failed; `.awake` check deleted. wake-up v2
+serve handler now REJECTS on timeout/error (Error messages; bus wraps to error envelope);
+success payload `{awake, attempts, elapsedMs, strategy}` stays informational; DOM events
+unchanged; also fixed hang: noy-unreachable path now fails waiters. Spec + both bundles
+mirrored + tests (10 gate, incl. "resolve value irrelevant") + docs/http-gate.md (401 →
+refresh-token as second canonical use) + wake-up.md bus lines. **36/36** node tests.
+Browser re-verified both paths on :5477: success — 503 → one bus recovery (request+
+response) → retry 200, wire log `a 503 → HEAD 503 → HEAD 200 → a 200`; timeout (dead
+backend) — bus request+error, parked RESOLVED original 503, held REJECTED
+FEAT_GATE_RECOVERY_FAILED, badge "wake timeout". Servers stopped, ports free.
+
+## 2026-11-14 (5) — PLAN: decouple http-gate from wake-up (generic bus-recovery interceptor)
+
+User review: "gate config knows about some 'wake' thing" — coupling. Refactor (all
+uncommitted, no consumer → edit in place): config `wake:{feature,target}` → neutral
+`recovery:{feature, event, payload}`; gate semantics become payload-agnostic — bus
+request RESOLVES → resume (retry parked, release held), REJECTS/NO_HANDLER/timeout →
+episode failed (parked original response, held FEAT_GATE_WAKE_FAILED); no `.awake` field
+check anywhere. wake-up v2 serve handler: rejects on timeout/error (bus wraps to error
+envelope) instead of resolving awake:false; DOM events unchanged; success payload stays
+informational. Spec + gate + wake-up v2 + tests + docs/http-gate.md (401→refresh-token
+as the second canonical use) + wake-up.md bus line. Verify: full node suite + browser
+chain incl. timeout path. This removes the LAST wake-specific knowledge from the gate:
+wake-up is now just one recovery provider.
+
+## 2026-11-14 (4) — RESULT: http-gate v1 + wake-up v2 shipped, 35/35 tests, browser-verified
+
+Done, nothing committed (rule 5). Follow-ups (separate tasks): plst fetch-layer wiring,
+`ng` namespace adapter when host consumes.
+1. **spec/http-gate.md** — cross-framework contract: config schema (rules
+   `{on:'ERROR', trigger:<status>, url_pattern?}` from host prior art — the sleeping
+   signal is data, not hardcoded 503; wake `{feature, target}`; timeoutMs MUST exceed
+   wake budget since the bus default is 5s); single-flight semantics (one wake/episode,
+   hold-before-send, replay once in order, parked get ORIGINAL response on wake-fail,
+   held reject FEAT_GATE_WAKE_FAILED, replayed failures never retrigger, fresh failure
+   after a completed cycle = new episode); framework variants = NAMESPACES of one
+   version, not versions.
+2. **http-gate/v1/js-web** (src mirrored) — ONE consolidated file (bus-style, single
+   script tag; deviates from the planned separate gate-core.js — the core is
+   `featGate.createGate(config, deps)` in the same file, pure/no-DOM, evals in node for
+   tests and is vendored by future ng/axios namespaces): browser adapter exposes
+   `window.featGate.request` (fetch drop-in) + optional `autoPatch` of window.fetch +
+   `FEAT_GATE_CONFIG` global; misconfig = pure passthrough. BUG found by tests: internal
+   pendingWake rethrew with no consumer → unhandledRejection; fixed (finishWake only).
+3. **wake-up/v2/js-web** (src mirrored, v1 untouched) — v1 behavior + `manual` attr
+   (dormant: invisible, no auto-wake — interceptor-slot shape) + `featBus.serve('wake-up')`
+   (payload target/mode/proxy/project, attrs fallback; concurrent requests join the
+   in-flight wake; resolves `{awake, attempts, elapsedMs, strategy}` or
+   `{awake:false, code:'TIMEOUT'|'ERROR'}` — awake:false RESOLVES, never rejects).
+4. **docs** — http-gate.md (feature doc, spec wins), wake-up.md (trigger modes section:
+   mounted vs interceptor slot, bus contract, manual attr, v2 row), know feature-slots
+   `backend-request` slot entry.
+5. **Tests** — back/test/http-gate.test.mjs (evals the shipped features/ bundle):
+   9/9 gate + 26 existing = **35/35 green** (`node --test 'test/*.test.mjs'` in back/).
+6. **Browser chain on :5477** (bus v1 + wake-up v2 manual + featGate, fake backend :5480
+   asleep→awake): one bus wake (log: request+response), badge during wake → "awake",
+   traffic sequence exactly per spec — `/api/a` 503 (parked) → HEAD poll 200 → a
+   replayed 200 → held `late` released 200, in order. Servers stopped, ports free.
+   Cleanup gotcha: another stale flask on :5477 (stale pid file) — kill by lsof PID.
+
+## 2026-11-14 (4) — PLAN: http-gate feature (spec-first) + wake-up v2 bus trigger
+
+User design discussion outcome: wake-up moves from app-init slot to a config-driven
+error-interceptor slot (`backend-request`); the single-flight http-gate itself becomes a
+feat feature; framework variants = namespaces of one version (spec-first), not versions.
+Approved plan: (1) `back/spec/http-gate.md` — cross-framework contract (config schema from
+../host InterceptorConfig prior art; single-flight hold/replay/no-retrigger semantics; bus
+wiring; adapter responsibilities); (2) `http-gate/v1/js-web` — pure `gate-core.js`
+(createGate(config, {request, wake})) + index.js exposing `window.featGate.request`
+(fetch drop-in, optional auto-patch of window.fetch); (3) `wake-up/v2/js-web` — v1 kept +
+`featBus.serve('wake-up')` (joins in-flight wake, resolves awake/timeout envelope) +
+`manual` attr (resident dormant, no auto-wake); (4) docs/http-gate.md + wake-up.md trigger
+modes + know feature-slots `backend-request` slot; (5) node:test contract tests for the
+core + browser chain check on :5477 (fake 503-then-200 target), stop server after.
+feat only; plst wiring + ng namespace later.
+
 ## 2026-11-04
 - **Task**: bootstrap the project — a runtime web-component library ("lib of features"):
   all versions accessible at once (`feat_URL/{feature}/v{n}/`), separate per-feature bundles
@@ -382,3 +516,152 @@ node --check + module import clean; 26/26 js-node contract tests unaffected. Ver
 plst's slot flow in a real browser (local feat): badge `v1.0.17.0.0.28`, expand shows
 project/namespace. Not deployed — next feat `-d` commit ships it; consumers pinning v3 keep the
 old one-liner (contract intact).
+
+## 2026-11-13 — PLAN: (1) new feature `wake-up` v1 js-web; (2) per-feature docs routes
+
+User request: port noy/back's wake logic to a sharable feat web-component (snapdeploy
+cold-start), loaded in a frontend's INIT slot; plus docs routes per feature (.md source of
+truth, rendered with Shoelace + marked.js via CDN), and a know entry `web-lifecycle-slots`.
+Scope: feat only — plst wiring is a separate later task. User choices: wake runs client-side
+direct by default; noy-proxy mode only when consumer passes mode="noy" + proxy attrs
+(mapped from their build-time envs FEAT_WAKE_UP_THRU_NOY / NOY_BACK_URL); docs = .md files
+rendered on a styled page.
+
+Plan:
+1. features/wake-up/v1/js-web/index.js (src mirrored to features/, version-display-v1
+   style: IIFE, customElements guard, shadow DOM): element <wake-server>; attrs target /
+   mode(direct|noy) / proxy / project / interval(3000) / timeout(185000). Direct mode =
+   browser port of noy wakeSnapDeploy (POST snapdeploy.dev/api/public/wake/<sub>, swallow
+   failures, then HEAD-poll target; awake = status in {200,204,301,302,401,403,404} and
+   not 503). Noy mode = GET {proxy}/make-wake-request?target=...&app=. Events:
+   wake-start / wake-awake / wake-timeout (detail attempts/elapsedMs/strategy). Badge UI:
+   state + spinner + attempts + elapsed.
+2. back/docs/<feature>.md x4 (wake-up, version-display, logging, db-diag) with a fixed
+   template: How it works / Environments / Inputs / Outputs & triggers / Lifecycle slot /
+   Consumers / Versions.
+3. app.py (py3.6-safe): GET /docs (index), GET /docs/<feature> (HTML page, Shoelace +
+   marked.js from CDN, fetches the .md client-side), GET /docs/<feature>.md (raw,
+   text/markdown, no-cache); manifest gains docs URL per feature; "/" links /docs.
+4. know/entries/web-lifecycle-slots.md + README index line.
+
+## 2026-11-13 — RESULT: wake-up v1 + docs routes shipped locally, browser-verified
+
+1. **wake-up v1** — `back/src/wake-up/v1/js-web/index.js` mirrored to `back/features/`.
+   Element `<wake-server>`: attrs target/mode(direct|noy)/proxy/project/interval(3000)/
+   timeout(185000). Direct = browser port of noy wakeSnapDeploy (wake ping swallow-then-
+   poll; awake = status≠503 ∈ {200,204,301,302,401,403,404}; target must send CORS on
+   HEAD — plst back reflects any origin). Noy mode = GET {proxy}/make-wake-request.
+   Events wake-start/awake/timeout; badge UI with live attempts/elapsed. node --check ok.
+   NOTE from testing: attrs must be set via setAttribute (property assignment doesn't
+   reflect) — documented implicitly by attribute-driven design.
+2. **docs** — `back/docs/{wake-up,version-display,logging,db-diag}.md` (fixed template:
+   How it works / Environments / Inputs / Outputs & triggers / Lifecycle slot / Consumers
+   / Versions). Routes in app.py (py3.6-safe): GET /docs (index), GET /docs/<feature>
+   (HTML, Shoelace 2.20.1 + marked 12 from CDN, fetches the .md), GET /docs/<feature>.md
+   (raw, text/markdown). manifest.json entries gain "docs": "/docs/<feature>"; "/" index
+   links docs per feature.
+3. **know** — entries/web-lifecycle-slots.md created + README index line (slots concept,
+   app-init/app-version semantics, plst reference impl).
+Verified: local flask — /docs 200, /docs/wake-up 200 (browser: markdown + shoelace alert
+rendered), /docs/wake-up.md 200 text/markdown, /docs/missing 404, /wake-up/v1/js-web/ 200,
+manifest lists wake-up + docs keys. Browser test on /docs (same origin): mounted
+<wake-server target=/healthz interval=1000> → wake-start then wake-awake {attempts:1,
+elapsedMs:3, strategy:'snapdeploy'}, badge "awake". First /docs 404 was a stale feat
+process on :5000 (old code) — restart fixed it. NOT committed — user ships with -d.
+Pending next: plst app-init slot wiring (separate task, user deferred).
+
+## 2026-11-13 (2) — PLAN: feature contract spec + bus v1 (new event interface, from scratch)
+
+User reviewed host/au bus prior art: keep best practices (addressable envelope, correlation
+id, event store idea), drop the old integration (no ASK_*/_DONE, no shared BehaviorSubject —
+impossible across separate script bundles anyway). New interface design:
+
+Envelope {id, contract:1, kind: signal|request|response|error, from, to, event, payload,
+reqId?, ts}; addresses feature@version | host | *; kebab events; JSON payloads. Helper API
+(window.featBus, stateless, transport = CustomEvents on document): signal / request(to,
+event, payload, {timeoutMs}) / serve(event, handler) / on(pattern) / log() ring buffer.
+Error envelopes {code: TIMEOUT|NO_HANDLER|HANDLER_ERROR, message}.
+
+Deliverables: docs/feature-contract.md (spec), features/bus/v1/js-web (helper, IIFE
+conventions like wake-up), know/feature-slots.md contract section → pointer to spec.
+Verify: node --check, flask routes, browser test (serve+request roundtrip, TIMEOUT and
+NO_HANDLER paths, log buffer). Nothing committed.
+
+## 2026-11-14 (3) — PLAN: docs dark mode (dark default, toggle, persisted)
+
+User request: add dark-mode to /docs pages, dark by default. Plan: in `back/app.py`
+DOCS_PAGE + docs_index — dark palette as default body styles (bg #16161a / text #ddd,
+dark borders/code bg), `body.light` overrides; Shoelace theme link gets an id and swaps
+dark.css/light.css on toggle; a small vanilla toggle button in the nav (persists in
+localStorage `feat-docs-theme`, default dark). Verify: flask boot on :5477, curl /docs +
+/docs/wake-up contain dark.css + toggle, browser check that dark renders + toggle works,
+stop server (rule 4).
+
+## 2026-11-14 (3) — RESULT: docs dark mode shipped (dark default + toggle), browser-verified
+
+Done, nothing committed. `back/app.py` DOCS_PAGE + docs_index: dark palette default
+(bg #16161a / text #ddd, dark borders + code bg #26262c, links #7ab0ff), `body.light`
+overrides; Shoelace theme `<link id='sl-theme'>` swaps dark.css/light.css with the mode;
+nav button toggles + persists in localStorage `feat-docs-theme` (default dark, shared by
+both pages). Browser-verified on :5477: wake-up page loads dark (body.dark, dark.css,
+bg rgb(22,22,26), md rendered) — screenshot confirmed readable dark UI; toggle → light
+(white bg, light.css, saved=light), persists across reload; toggled back → dark saved;
+/docs index picks the same theme (saved=dark). Gotcha hit AGAIN: an orphaned Werkzeug
+reloader child (from the earlier `python app.py` debug run, parent killed) still held
+:5477 serving OLD code — first curl showed no dark markers; killed child PID, restarted,
+all green. LESSON: `app.run(debug=True)` spawns a reloader child that outlives
+`kill <parent>` — kill the process group or run with use_reloader=False. Server stopped,
+port free (rule 4). Playwright role=button click timed out twice in IAB (hit-target
+quirk) — verified toggle via element.click() in evaluate instead; real handler exercised.
+
+## 2026-11-14 (2) — RESULT: wake-up badge width jitter fixed
+
+Done, nothing committed. `wake-up/v1/js-web/index.js` (src + features mirror, edited in
+place — v1 never committed/deployed): badge font was already mono; the jitter was digit
+COUNT growth. Elapsed now `toFixed(1).padStart(4)` (`" 1.3s"…`" 9.9s"`…`"20.0s"` — verified
+in node, all 4 chars), tries `padStart(2)` (`" 9"`/`"10"`), `.meta` gained
+`white-space: pre` so mono padding renders. `node --check` OK, src/features in sync for
+wake-up (pre-existing features-only extras: db-diag, logging, version-display v3/v4).
+Note: elapsed ≥100s (timeout is 185s default) still grows one char — per user's xx.x spec.
+Follow-up same day (user request): widened to padStart(5) = `xxx.x` — covers the full 185s
+default timeout (`"  1.3s"` … `"185.0s"`, all 5 chars, verified in node; mirrored + checked).
+
+User report: while waking, the badge content jumps left↔right as numbers grow (1.3 vs 20.0).
+Font is already mono; the jitter is the digit COUNT changing. Fix in
+`back/src/wake-up/v1/js-web/index.js` (v1 is local-only, never committed/deployed → edit in
+place, no version bump): pad elapsed to fixed `xx.x` (toFixed(1).padStart(4)) and attempts
+to 2 digits (padStart(2)), `white-space: pre` on .meta so the mono padding renders; mirror
+src → features; node --check both.
+
+## 2026-11-14 — RESULT: backend dev port now 5477, e2e green (stale v2 spec fixed to v4)
+
+Done, nothing committed (rule 5). Changes:
+1. `back/app.py`: `app.run(debug=True, port=5477)` — plain `python app.py` now binds 5477
+   itself (old gotcha "binds 5000, held by macOS ControlCenter" resolved).
+2. Angular consumer port refs 5099 → 5477: `playwright.config.ts` (webServer command +
+   port + comment), `src/app/feat-loader.ts` (FEAT_BASE_URL dev factory), `test/README.md`.
+3. PRE-EXISTING staleness found+fixed while verifying: `e2e/feature.spec.ts` still expected
+   version-display **v2** (spec last run 2026-11-07, before v4 shipped 2026-11-08).
+   Updated to v4 contract: `/latest/js-web` → `/v4/js-web/`, badge = `v1.2.3` (v4 shows
+   version only; tag-version/tech-stack/slave attrs are v2-era and ignored by v4's shell —
+   `DATA_KEYS = [version, project, namespace, commit, repo]`), detail rows
+   project/namespace/commit/repo, asserts NO 'tech stack'/'tag version' rows.
+   Note: `app.html` still passes tag-version/tech-stack/slave attrs (harmless — ignored)
+   and its copy says "shows only the tag version" (cosmetically stale for v4) — left as is.
+Verified: e2e **1 passed** (flask log: `GET /version-display/latest/js-web 302` →
+`GET /version-display/v4/js-web/ 200` through :5477); `python app.py` booted directly →
+`curl :5477/healthz` = ok; all servers stopped after (4200/5099/5477 free — rule 4).
+
+## 2026-11-14 — PLAN: backend dev port 5099 → 5477
+
+User request: change the backend server port to 5477. `back/app.py` `__main__` currently
+runs `app.run(debug=True)` (Flask default 5000; dev flows pass `port=5099` explicitly).
+Plan:
+1. `back/app.py`: `app.run(debug=True, port=5477)` — `python app.py` now binds 5477 itself.
+2. Update every `:5099` in the angular consumer: `playwright.config.ts` (webServer command
+   + port + comment), `src/app/feat-loader.ts` (FEAT_BASE_URL dev factory),
+   `e2e/feature.spec.ts` (url assertions), `test/README.md` (dev URL convention).
+3. Verify: run e2e (`cd test/angular && npm run test:e2e`) — boots flask on 5477 itself and
+   asserts the full load chain through the new port; stop servers after (rule 4).
+
+Prior sessions: `DECISIONS-archive.md` (rotated 2026-11-14).

@@ -17,7 +17,7 @@ consumer (its config → redeploy), never in this library.
 ## Conventions
 
 - Features are fetched from a running feat router (`back/app.py`), default
-  dev URL `http://127.0.0.1:5099`.
+  dev URL `http://127.0.0.1:5477`.
 - Namespaces are free-form path parts (`js-web`, `js-node`, `py`, …) — an app
   requests the namespace that matches its runtime.
 - Bundles are immutable at versioned URLs; `/latest/<ns>` is the only URL a

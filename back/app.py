@@ -40,6 +40,7 @@ if not logging.getLogger().handlers:
 log = logging.getLogger("feat")
 
 FEATURES_DIR = Path(__file__).resolve().parent / "features"
+DOCS_DIR = Path(__file__).resolve().parent / "docs"
 VERSION_RE = re.compile(r"^v(\d+)$")
 # namespace is intentionally not a constant list — only path safety matters
 PATH_SEGMENT_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
@@ -170,6 +171,7 @@ def manifest():
     poll revalidates.
     """
     features = {}
+    documented = set(docs_names())
     if FEATURES_DIR.is_dir():
         for d in sorted(FEATURES_DIR.iterdir()):
             if not d.is_dir():
@@ -177,11 +179,144 @@ def manifest():
             versions = versions_of(d.name)
             if not versions:
                 continue
-            features[d.name] = {
+            entry = {
                 "versions": [f"v{n}" for n in versions],
                 "latest": f"v{versions[-1]}",
             }
+            if d.name in documented:
+                entry["docs"] = f"/docs/{d.name}"
+            features[d.name] = entry
     return {"features": features}
+
+
+def docs_names():
+    """Feature names that have a docs page (docs/<feature>.md present)."""
+    if not DOCS_DIR.is_dir():
+        return []
+    return sorted(
+        p.stem for p in DOCS_DIR.iterdir()
+        if p.is_file() and p.suffix == ".md" and PATH_SEGMENT_RE.fullmatch(p.stem)
+    )
+
+
+DOCS_PAGE = """<!doctype html><html><head><meta charset='utf-8'>
+<title>feat docs — __NAME__</title>
+<link id='sl-theme' rel='stylesheet'
+  href='https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/dark.css'>
+<style>
+  body { font: 14px/1.6 system-ui, sans-serif; max-width: 820px; margin: 2rem auto; padding: 0 1rem;
+         background: #16161a; color: #ddd; }
+  body.light { background: #fff; color: #222; }
+  article { line-height: 1.6; }
+  article h1, article h2 { border-bottom: 1px solid #444; padding-bottom: .2em; }
+  body.light article h1, body.light article h2 { border-bottom-color: #ddd; }
+  article table { border-collapse: collapse; }
+  article td, article th { border: 1px solid #555; padding: 4px 10px; text-align: left; }
+  body.light article td, body.light article th { border-color: #ccc; }
+  article code { background: #26262c; padding: 1px 4px; border-radius: 3px; }
+  body.light article code { background: #f4f4f4; }
+  nav { margin-bottom: 1rem; }
+  nav a { margin-right: 1rem; }
+  nav button { font: inherit; background: none; border: 1px solid #666; color: inherit;
+               border-radius: 6px; cursor: pointer; padding: 1px 8px; }
+  body.light nav button { border-color: #bbb; }
+</style>
+</head><body>
+<nav><a href="/">← feat</a> &middot; <a href="/docs">all docs</a>
+  &middot; <button id='theme'></button></nav>
+<sl-alert variant='neutral' open><sl-icon slot='icon' name='info-circle'></sl-icon>
+  <strong>__NAME__</strong> — rendered from <a href='__NAME__.md'>__NAME__.md</a> (source of truth)</sl-alert>
+<article id='doc'>loading…</article>
+<script type='module'
+  src='https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js'></script>
+<script>
+  (function () {
+    var CDN = 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/';
+    var sl = document.getElementById('sl-theme');
+    var btn = document.getElementById('theme');
+    function apply(mode) {
+      document.body.className = mode;              // 'dark' | 'light'
+      sl.href = CDN + mode + '.css';
+      btn.textContent = mode === 'light' ? 'dark mode' : 'light mode';
+      try { localStorage.setItem('feat-docs-theme', mode); } catch (e) {}
+    }
+    var saved = null;
+    try { saved = localStorage.getItem('feat-docs-theme'); } catch (e) {}
+    apply(saved === 'light' ? 'light' : 'dark');   // dark is the default
+    btn.onclick = function () {
+      apply(document.body.className === 'light' ? 'dark' : 'light');
+    };
+  })();
+</script>
+<script src='https://cdn.jsdelivr.net/npm/marked@12/marked.min.js'></script>
+<script>
+  fetch('__NAME__.md').then(function (r) {
+    if (!r.ok) throw new Error('docs fetch ' + r.status);
+    return r.text();
+  }).then(function (md) {
+    document.getElementById('doc').innerHTML = marked.parse(md);
+  }).catch(function (err) {
+    document.getElementById('doc').textContent = 'failed to load docs: ' + err.message;
+  });
+</script>
+</body></html>"""
+
+
+@app.get("/docs")
+def docs_index():
+    items = "".join(
+        f"<li><a href='/docs/{escape(name)}'>{escape(name)}</a> "
+        f"(<a href='/docs/{escape(name)}.md'>raw .md</a>)</li>"
+        for name in docs_names()
+    )
+    return (
+        "<!doctype html><html><head><meta charset='utf-8'><title>feat docs</title><style>"
+        "body{font:14px/1.5 system-ui,sans-serif;max-width:780px;margin:2rem auto;padding:0 1rem;"
+        "background:#16161a;color:#ddd}"
+        "body.light{background:#fff;color:#222}"
+        "a{color:#7ab0ff}body.light a{color:#0b5fcc}"
+        "button{font:inherit;background:none;border:1px solid #666;color:inherit;"
+        "border-radius:6px;cursor:pointer;padding:1px 8px}"
+        "body.light button{border-color:#bbb}"
+        "</style></head><body>"
+        "<p style='margin:0 0 1rem'><button id='theme'></button></p>"
+        "<h1>feat — docs</h1>"
+        "<p>One page per feature: how it works, envs, inputs, outputs/triggers, "
+        "lifecycle slot, consumers, versions.</p>"
+        f"<ul>{items or '<li>no docs yet</li>'}</ul>"
+        "<p><a href='/'>← feature library</a></p>"
+        "<script>"
+        "(function () {"
+        "  var btn = document.getElementById('theme');"
+        "  function apply(mode) {"
+        "    document.body.className = mode;"
+        "    btn.textContent = mode === 'light' ? 'dark mode' : 'light mode';"
+        "    try { localStorage.setItem('feat-docs-theme', mode); } catch (e) {}"
+        "  }"
+        "  var saved = null;"
+        "  try { saved = localStorage.getItem('feat-docs-theme'); } catch (e) {}"
+        "  apply(saved === 'light' ? 'light' : 'dark');"
+        "  btn.onclick = function () {"
+        "    apply(document.body.className === 'light' ? 'dark' : 'light');"
+        "  };"
+        "})();"
+        "</script></body></html>"
+    )
+
+
+@app.get("/docs/<feature>.md")
+def docs_raw(feature: str):
+    if not PATH_SEGMENT_RE.fullmatch(feature) or feature not in docs_names():
+        abort(404)
+    # no-cache comes from the after_request default — docs are editable anytime
+    return send_from_directory(DOCS_DIR, f"{feature}.md", mimetype="text/markdown")
+
+
+@app.get("/docs/<feature>")
+def docs_page(feature: str):
+    if not PATH_SEGMENT_RE.fullmatch(feature) or feature not in docs_names():
+        abort(404)
+    return DOCS_PAGE.replace("__NAME__", feature)
 
 
 @app.get("/healthz")
@@ -192,6 +327,7 @@ def healthz():
 @app.get("/")
 def index():
     rows = []
+    documented = set(docs_names())
     if FEATURES_DIR.is_dir():
         for d in sorted(FEATURES_DIR.iterdir()):
             if not d.is_dir():
@@ -217,9 +353,14 @@ def index():
                 f'<a href="/{escape(d.name)}/latest/{escape(ns)}">latest/{escape(ns)}</a>'
                 for ns in namespaces_of(FEATURES_DIR / d.name / f"v{versions[-1]}")
             ]
+            docs_link = (
+                f" &middot; <a href='/docs/{escape(d.name)}'>docs</a>"
+                if d.name in documented
+                else ""
+            )
             rows.append(
                 f"<h2>{escape(d.name)}</h2>"
-                f"<p>latest: {' &middot; '.join(latest_ns)}</p>"
+                f"<p>latest: {' &middot; '.join(latest_ns)}{docs_link}</p>"
                 "<table><tr><th>version</th><th>namespace</th><th>url</th>"
                 f"<th>connect</th></tr>{''.join(cells)}</table>"
             )
@@ -242,6 +383,6 @@ if __name__ == "__main__":
         else []
     )
     log.info("starting dev server — features_dir=%s features=%s", FEATURES_DIR, features or "NONE")
-    app.run(debug=True)
+    app.run(debug=True, port=5477)
 # pipeline marker
 # npm-copy check

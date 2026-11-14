@@ -7,7 +7,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
  */
 export const FEAT_BASE_URL = new InjectionToken<string>('featBaseUrl', {
   providedIn: 'root',
-  factory: () => 'http://127.0.0.1:5099',
+  factory: () => 'http://127.0.0.1:5477',
 });
 
 // module-level: one load per versioned URL per page lifetime
