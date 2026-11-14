@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const bundle = readFileSync(
-  new URL('../features/http-gate/v1/js-web/index.js', import.meta.url),
+  new URL('../features/http-gate/v2/js-web/index.js', import.meta.url),
   'utf8',
 );
 (0, eval)(bundle);
@@ -225,4 +225,72 @@ test('recovery rejection (bus error) fails the episode like a reject', async () 
   rejectRecovery(new Error('bus down'));
   assert.equal((await p).status, 503);
   assert.equal(gate.state(), 'failed');
+});
+
+// ---- v2: NETWORK rules ---------------------------------------------------------------
+
+const NET_CFG = {
+  rules: [{ on: 'NETWORK' }],
+  recovery: { event: 'wake-up', payload: { target: 'https://x' } },
+};
+
+test('v2: NETWORK rule — transport rejection parks and recovers (the snapdeploy preflight case)', async () => {
+  let fail = true;
+  const sends = [];
+  const recoveries = [];
+  let pending = deferred();
+  const gate = createGate(NET_CFG, {
+    request: (url) => {
+      sends.push(url);
+      return fail ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(RESP_200);
+    },
+    recover: () => { recoveries.push(1); return pending.promise; },
+  });
+
+  const p = gate.request('/api/library/users');
+  await tick();
+  assert.equal(recoveries.length, 1); // the network error WAS the sleep signal
+  assert.equal(gate.state(), 'recovering');
+
+  fail = false; // backend awake now
+  pending.resolve();
+  assert.equal((await p).status, 200); // the rejected request retried successfully
+  assert.deepEqual(sends, ['/api/library/users', '/api/library/users']);
+});
+
+test('v2: NETWORK + failed recovery — parked reject with their ORIGINAL error', async () => {
+  let pending = deferred();
+  const gate = createGate(NET_CFG, {
+    request: () => Promise.reject(new TypeError('Failed to fetch')),
+    recover: () => pending.promise,
+  });
+  const parkedP = gate.request('/api/a');
+  await tick();
+  const heldP = gate.request('/api/held');
+  pending.reject(new Error('give up'));
+  await assert.rejects(parkedP, (err) => err instanceof TypeError);
+  await assert.rejects(heldP, (err) => err.code === 'FEAT_GATE_RECOVERY_FAILED');
+});
+
+test('v2: no NETWORK rule — transport rejection still passes through (v1 behavior)', async () => {
+  const recoveries = [];
+  const gate = createGate(CFG, { // 503-only rules
+    request: () => Promise.reject(new TypeError('Failed to fetch')),
+    recover: () => { recoveries.push(1); return deferred().promise; },
+  });
+  await assert.rejects(gate.request('/api/a'), (err) => err instanceof TypeError);
+  assert.equal(recoveries.length, 0);
+});
+
+test('v2: NETWORK url_pattern limits the rule', async () => {
+  const recoveries = [];
+  const gate = createGate(
+    { rules: [{ on: 'NETWORK', url_pattern: '^/api/' }], recovery: CFG.recovery },
+    {
+      request: () => Promise.reject(new TypeError('offline')),
+      recover: () => { recoveries.push(1); return deferred().promise; },
+    },
+  );
+  await assert.rejects(gate.request('/static/x'), (err) => err instanceof TypeError);
+  assert.equal(recoveries.length, 0);
 });

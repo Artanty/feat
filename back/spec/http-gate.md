@@ -30,9 +30,14 @@ separate versions — v2 of the gate logic is v2 in every namespace.
       timeoutMs: 200000        // recovery budget; MUST exceed the provider's own timeout
     }
 
-- `rules[].on` — only `'ERROR'` today (a response/error status trigger).
-- `rules[].trigger` — HTTP status number. The recoverable signal is DATA (snapdeploy
-  = 503, expired auth = 401), not hardcoded — a consumer's config decides.
+- `rules[].on` — `'ERROR'` (a readable HTTP failure status) or `'NETWORK'` (v2: the
+  transport REJECTED — fetch TypeError). NETWORK exists because a sleeping backend may
+  not answer CORS preflights: preflighted cross-origin calls then die as network errors
+  (status 0) before any status could be read — found live on plist.twc1.net, where a
+  simple GET got a readable 503 while `x-user-id`-preflighted calls on the same backend
+  were opaque. Consumers usually declare both rules.
+- `rules[].trigger` — HTTP status number, ERROR rules only. The recoverable signal is
+  DATA (snapdeploy = 503, expired auth = 401), not hardcoded — a consumer's config decides.
 - `rules[].url_pattern` — optional regex the request URL must match; missing = all URLs.
 - `recovery.event` / `.payload` — bus event of the provider and its payload
   (`featBus.request(recovery.event, recovery.payload)` — requests are addressed by
@@ -60,7 +65,8 @@ While an episode runs the gate signals `global-loading-start` (on begin) and
    re-sent once, in original order (parked first, then held). The gate does not inspect
    the resolved payload.
 4. **Reject → fail the episode.** On reject, NO_HANDLER, or timeout: parked requests
-   settle with their ORIGINAL response; held requests reject with
+   settle with their ORIGINAL outcome (the response for ERROR-parked, the transport
+   error for NETWORK-parked); held requests reject with
    `{code: 'FEAT_GATE_RECOVERY_FAILED'}` (they were never sent, so they have no own failure).
 5. **No loops.** A replayed request that fails again does NOT retrigger the recovery
    (it settles with its response). A fresh matching failure after a completed episode

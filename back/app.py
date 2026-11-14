@@ -41,6 +41,21 @@ log = logging.getLogger("feat")
 
 FEATURES_DIR = Path(__file__).resolve().parent / "features"
 DOCS_DIR = Path(__file__).resolve().parent / "docs"
+
+
+def _read_app_version():
+    # pyproject is the single source (auto-bumped by hooks on every commit)
+    try:
+        text = (Path(__file__).resolve().parent / "pyproject.toml").read_text()
+        match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    return "0.0.0"
+
+
+APP_VERSION = _read_app_version()
 VERSION_RE = re.compile(r"^v(\d+)$")
 # namespace is intentionally not a constant list — only path safety matters
 PATH_SEGMENT_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
@@ -52,6 +67,22 @@ JS_MIMES = {
 }
 
 app = Flask(__name__)
+
+# feat's own version badge on the docs + index pages, served by version-display.
+# The host-page rule `deploy-info{position:static}` overrides the shadow :host
+# fixed-positioning, so the badge flows inline in the top row instead of
+# floating bottom-right.
+VERSION_BADGE_CSS = "deploy-info{position:static;display:inline-block;vertical-align:middle}"
+VERSION_BADGE = (
+    "<script src='/version-display/latest/js-web'></script>"
+    "<deploy-info src='/version.json' manifest='/manifest.json'></deploy-info>"
+)
+
+
+@app.get("/version.json")
+def version_json():
+    """feat's own deploy info — the src endpoint for the version badge."""
+    return {"version": APP_VERSION, "project": "feat", "namespace": "back"}
 
 
 @app.after_request
@@ -217,13 +248,14 @@ DOCS_PAGE = """<!doctype html><html><head><meta charset='utf-8'>
   body.light article code { background: #f4f4f4; }
   nav { margin-bottom: 1rem; }
   nav a { margin-right: 1rem; }
+  __BADGE_CSS__
   nav button { font: inherit; background: none; border: 1px solid #666; color: inherit;
                border-radius: 6px; cursor: pointer; padding: 1px 8px; }
   body.light nav button { border-color: #bbb; }
 </style>
 </head><body>
 <nav><a href="/">← feat</a> &middot; <a href="/docs">all docs</a>
-  &middot; <button id='theme'></button></nav>
+  &middot; <button id='theme'></button> &middot; __BADGE__</nav>
 <sl-alert variant='neutral' open><sl-icon slot='icon' name='info-circle'></sl-icon>
   <strong>__NAME__</strong> — rendered from <a href='__NAME__.md'>__NAME__.md</a> (source of truth)</sl-alert>
 <article id='doc'>loading…</article>
@@ -278,8 +310,10 @@ def docs_index():
         "button{font:inherit;background:none;border:1px solid #666;color:inherit;"
         "border-radius:6px;cursor:pointer;padding:1px 8px}"
         "body.light button{border-color:#bbb}"
+        + VERSION_BADGE_CSS +
         "</style></head><body>"
-        "<p style='margin:0 0 1rem'><button id='theme'></button></p>"
+        "<p style='margin:0 0 1rem'><button id='theme'></button> &middot; "
+        + VERSION_BADGE + "</p>"
         "<h1>feat — docs</h1>"
         "<p>One page per feature: how it works, envs, inputs, outputs/triggers, "
         "lifecycle slot, consumers, versions.</p>"
@@ -316,7 +350,12 @@ def docs_raw(feature: str):
 def docs_page(feature: str):
     if not PATH_SEGMENT_RE.fullmatch(feature) or feature not in docs_names():
         abort(404)
-    return DOCS_PAGE.replace("__NAME__", feature)
+    return (
+        DOCS_PAGE
+        .replace("__NAME__", feature)
+        .replace("__BADGE_CSS__", VERSION_BADGE_CSS)
+        .replace("__BADGE__", VERSION_BADGE)
+    )
 
 
 @app.get("/healthz")
@@ -370,7 +409,10 @@ def index():
         "body{font:14px/1.5 system-ui,sans-serif;max-width:780px;margin:2rem auto;padding:0 1rem}"
         "table{border-collapse:collapse;margin-bottom:1rem}td,th{border:1px solid #ccc;"
         "padding:4px 10px;text-align:left}code{background:#f4f4f4;padding:1px 4px;border-radius:3px}"
-        "</style></head><body><h1>feat — feature library</h1>"
+        + VERSION_BADGE_CSS +
+        "</style></head><body>"
+        "<p style='margin:0 0 1rem'>" + VERSION_BADGE + "</p>"
+        "<h1>feat — feature library</h1>"
         f"{body}"
         "</body></html>"
     )

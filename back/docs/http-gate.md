@@ -76,6 +76,11 @@ See know/entries/feature-slots.md and `/docs/wake-up` (trigger modes).
 
 ## Versions
 
-- **v1** (2026-11-14) — first release: config rules, single-flight park/hold/retry,
-  loop guard, payload-agnostic bus recovery (event-addressed), loading signals,
-  fetch drop-in + autoPatch.
+- **v1** (2026-11-14) — first release: config rules (ERROR/status), single-flight
+  park/hold/retry, loop guard, payload-agnostic bus recovery (event-addressed),
+  loading signals, fetch drop-in + autoPatch.
+- **v2** (2026-11-14) — `{on: 'NETWORK'}` rule: transport rejections (fetch TypeError)
+  can be declared recoverable. Found live on plist.twc1.net: preflighted calls against
+  a sleeping snapdeploy die as network errors (CORS preflight unanswered), so a 503-only
+  rule never fires. Parked NETWORK requests reject with their original error if the
+  recovery fails. Consumers typically declare `[{on:'ERROR',trigger:503},{on:'NETWORK'}]`.

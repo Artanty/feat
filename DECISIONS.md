@@ -1,5 +1,58 @@
 # DECISIONS
 
+## 2026-11-14 (9) — RESULT: feat version badge on docs + root page, via version-display — done
+
+`back/app.py` only: `_read_app_version()` parses the pyproject version once at startup
+(currently 0.0.28); new `GET /version.json` → `{version, project:'feat',
+namespace:'back'}` (no-cache default); VERSION_BADGE_CSS + VERSION_BADGE constants
+(script `/version-display/latest/js-web` + `<deploy-info src='/version.json'
+manifest='/manifest.json'>`) wired into the top row of `/` (new `<p>` above the h1),
+`/docs` index (next to the theme button) and DOCS_PAGE (nav, after the theme button);
+host CSS `deploy-info{position:static;display:inline-block;vertical-align:middle}`
+overrides the shadow `:host{position:fixed}` — badge flows inline in the top row.
+GOTCHA hit: `/version-display/latest/js-web/` WITH trailing slash → 404 (the /latest
+route is strict-slash; the redirect target /v4/js-web/ has its own slash route) — use the
+slash-less /latest URL in script tags. Browser-verified on :5477: all three pages show
+badge `v0.0.28`, position:static, in the top row (root: above h1; docs: inside nav at
+y≈36). Server stopped, port free. Not committed — ships with the next `-d`.
+
+## 2026-11-14 (9) — PLAN: feat's own version badge on docs + root page, via version-display
+
+User request: show the current feat version in the top row of the docs pages and the
+`/` features index — using feat's own `version-display` feature. Plan: (a) `back/app.py`
+reads the pyproject version once at startup and serves `GET /version.json` →
+`{version, project:'feat', namespace:'back'}` (no-cache default); (b) DOCS_PAGE, docs_index
+and the `/` index get `<script src='/version-display/latest/js-web/'>` +
+`<deploy-info src='/version.json' manifest='/manifest.json'>` in the top row, with host CSS
+`deploy-info{position:static;display:inline-block}` (outer-page rules override the shadow
+`:host{position:fixed;bottom/right}`, so the badge flows inline instead of bottom-right);
+(c) verify on :5477 (curl all three pages + browser check the badge shows `v0.0.28` in the
+top row on / and /docs), stop server, record result.
+
+## 2026-11-14 (8) — RESULT: http-gate v2 — NETWORK rule (prod HAR diagnosis)
+
+User deployed feat@back (feat.twc1.net) + plst@web (plist.twc1.net); app dead: "cannot
+reach the plst server", no features. HAR (read first, per plst rules): `/api/features`
+(simple GET) → readable **503**, but every `/api/library/*` (x-user-id/content-type →
+CORS preflighted) → **status 0**: the sleeping snapdeploy edge does not answer preflights,
+so preflighted calls die as network errors before any status is readable. The gate's
+503-only rule passed them through — exactly the caveat recorded in (7)/plst DECISIONS.
+Deployed plst bundle verified CURRENT (feat.twc1.net baked in, app-infra rows present;
+feat.twc1.net serves all features 200 — local DNS needs dig @1.1.1.1 + --resolve).
+Fix: **http-gate v2** (v1 published → new dir, never edit in place): rule `{on:
+'NETWORK'}` — transport rejection as recoverable signal; parked NETWORK requests reject
+with their ORIGINAL error on failed recovery; `if (root.featGate) return` guard (any
+version wins, never double-wrap). Spec + docs updated; tests now pin v2 (41/41, +5
+NETWORK tests). plst: row → v2, rules `[{on:'ERROR',trigger:503},{on:'NETWORK'}]`,
+70/70 + build ok. E2E with a HAR-faithful fake (preflight dies while asleep, simple GETs
+readable 503): wire log reproduced prod exactly — 3 preflight deaths → ONE episode
+(NETWORK) → wake HEAD OK → all parked (incl. network-error deaths) retried to 200; bus
+log loading-start/request/response/end. KNOWN LIMIT (left): /api/features config fetch
+is ungated (raw fetch) and its failed promise is cached forever — app-version badge
+needs a reload after first wake; fix later if it bothers. USER ACTION: redeploy BOTH
+feat (new v2 route) and plst (v2 row + NETWORK rules). Not committed — say the word.
+Prior sessions: `DECISIONS-archive.md` (rotated 2026-11-14).
+
 ## 2026-11-14 (7) — RESULT: wake-up v2 bus-late serve + plst wired (companion)
 
 Done, nothing committed. wake-up/v2 serveBus: if featBus is absent at connect, watches
