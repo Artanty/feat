@@ -5,16 +5,24 @@ browser and shows its state while the cold start runs.
 
 ## How it works
 
-Browser port of noy/back's `wakeServer.js` snapdeploy strategy:
+Browser port of noy/back's `wakeServer.js` snapdeploy strategy, extended in v3 with a
+URL-parsed wake 'way' (strategy):
 
-1. **Wake ping** — `POST https://snapdeploy.dev/api/public/wake/<subdomain>` (derived from
-   the `target` hostname; `*.containers.somdip.dev` hosts use `containers.somdip.dev`).
-   Plain HTTP GETs don't wake these containers; this replicates the platform's own
-   wake-page script. Any ping failure (even 429) is swallowed — the poll decides.
-2. **Poll loop** — `HEAD target` every `interval` ms. Awake = status ≠ 503 (the sleeping
-   wake-page response) and status ∈ {200, 204, 301, 302, 401, 403, 404} — an
-   auth-rejecting server is an awake server. Network errors keep polling until `timeout`.
-3. **`mode="noy"`** — instead of doing the work itself, the component calls noy/back's
+1. **Strategy detection** (v3) — parsed from the `target` hostname, no option to pass:
+   `*.onrender.com` → `render` · `sub.containers.snapdeploy.app|dev|somdip.dev` →
+   `snapdeploy` · anything else → `poll` (generic plain polling). The resolved strategy is
+   reported in `wake-awake` / the bus result.
+2. **Wake ping** — snapdeploy strategy only: `POST
+   https://snapdeploy.dev/api/public/wake/<subdomain>` (`*.containers.somdip.dev` hosts
+   use `containers.somdip.dev`). Plain HTTP GETs don't wake these containers; this
+   replicates the platform's own wake-page script. `render` and `poll` hosts have no wake
+   API — the poll request itself triggers the cold start. Any ping failure (even 429) is
+   swallowed — the poll decides.
+3. **Poll loop** — `HEAD target` every `interval` ms (js-ext: `HEAD <base>/healthz`).
+   Awake = status ≠ 503 (the sleeping wake-page response) and status ∈
+   {200, 204, 301, 302, 401, 403, 404} — an auth-rejecting server is an awake server.
+   Network errors keep polling until `timeout`.
+4. **`mode="noy"`** — instead of doing the work itself, the component calls noy/back's
    `GET {proxy}/make-wake-request?target=…&app=…` which wakes (and waits) server-side;
    the component reads `{request: "completed", wake: {awake, attempts, elapsedMs, strategy}}`.
 
@@ -49,7 +57,8 @@ envs to attributes:
 Custom events (bubble; host pages gate their API calls on `wake-awake`):
 
 - `wake-start` — `{target, mode}`
-- `wake-awake` — `{attempts, elapsedMs, strategy}` (`"snapdeploy"`, `"noy"`, or noy's strategy)
+- `wake-awake` — `{attempts, elapsedMs, strategy}` (`"snapdeploy"`, `"render"`, `"poll"`,
+  `"noy"`, or noy's own strategy)
 - `wake-timeout` — `{attempts, elapsedMs [, wake]}`
 
 Visible output while waiting: a compact badge — state (waking… / awake / wake timeout /
@@ -112,3 +121,5 @@ same v2 wake core as a plain module — attach it to `globalThis.featWakeUp`. MV
   mode, event contract, badge UI.
 - **v2** (2026-11-14) — interceptor-slot shape: `manual` attr (resident, dormant),
   `featBus.serve('wake-up')` with single-flight join, fixed-width badge counter.
+- **v3** (2026-11-15) — URL-parsed wake way: `*.onrender.com` → render strategy, unknown
+  hosts → poll; snapdeploy wake POST fires only for snapdeploy hosts. No new attributes.
