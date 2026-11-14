@@ -81,11 +81,30 @@ wake error), pulsing dot, attempts, live elapsed seconds.
   when a config-matched failure arrives. Preferred for snapdeploy (no unconditional wake
   pings). See know/entries/feature-slots.md.
 
+## js-ext namespace (v2)
+
+Chrome MV3 extension consumers (service worker / popup) have no document and no shared
+window: no custom elements, no CustomEvents bus transport. The `js-ext` bundle is the
+same v2 wake core as a plain module — attach it to `globalThis.featWakeUp`. MV3 CSP
+(`script-src 'self'`) forbids loading it from the feat host at runtime, so consumers
+**vendor** the file (js-node pattern), e.g. plst copies it into `ext/vendor/feat/`.
+
+- `featWakeUp.wakeServer(base, opts)` → Promise — resolves
+  `{awake: true, attempts, elapsedMs, strategy}`, rejects on timeout/error.
+- `opts`: `{mode ('direct'|'noy'), proxy, project, interval (3000), timeout (185000),
+  onState(state, detail)}`. `onState` mirrors the js-web events for UI rendering:
+  `'waking'` `{target, mode}` · `'awake'` `{attempts, elapsedMs, strategy}` ·
+  `'timeout'` `{attempts, elapsedMs}` · `'error'` `{message}`.
+- Single-flight: concurrent calls for the same target join the in-flight wake; a call
+  for a different target while one runs rejects immediately.
+- Direct mode polls `HEAD <base>/healthz` (the lightweight probe), not the bare origin.
+
 ## Consumers
 
 | project | language | notes |
 |---|---|---|
 | plst | js-web (React web) | planned: wake the snapdeploy backend on page load (wiring pending) |
+| plst ext | js-ext (Chrome MV3) | vendored; popup wakes the snapdeploy backend on cold start |
 
 ## Versions
 

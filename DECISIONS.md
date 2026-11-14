@@ -1,5 +1,78 @@
 # DECISIONS
 
+## 2026-11-14 (12) — RESULT: js-ext http-gate config was captured at load — fixed to lazy
+
+Live bug (plst ext import, 17:53): POST /api/library/scan against the sleeping
+snapdeploy died instantly "Failed to fetch", NO wake episode in ext-logs — the gate
+was a silent passthrough. Cause: the js-ext adapter read `root.FEAT_GATE_CONFIG` at
+script LOAD time, but in the extension popup.js sets the config AFTER the vendor
+bundles load → conf={} → createGate's misconfigured=passthrough branch. Fix: capture
+the config at FIRST REQUEST (gate() init). Regression test: config set after eval,
+NETWORK-only rule, POST rejected while asleep → wake → retry → 200
+(http-gate-ext.test.mjs). GOTCHA hit: first run failed because the test evals the
+SHIPPED features/ mirror — re-mirrored before rerunning. **53/53**. Mirrored, plst
+re-vendored + rebuilt.
+
+## 2026-11-14 (11) — RESULT: js-ext namespaces shipped for wake-up v2 + http-gate v2, 52/52
+
+Done, nothing committed. `back/src/{wake-up,http-gate}/v2/js-ext/index.js` mirrored to
+`back/features/` (diff clean except the known pre-existing drift). wake-up js-ext:
+`globalThis.featWakeUp.wakeServer(base, opts)` — v2 network core (snapdeploy wake POST
+swallow-then-poll `HEAD <base>/healthz`, 3s/185s, single-flight join; different-target
+while running rejects immediately), `opts.onState(waking|awake|timeout|error, detail)`
+mirrors the web events; `module.exports` for node tests. http-gate js-ext: v2 core
+copied verbatim + ext adapter — no bus, `recover` calls `featWakeUp.wakeServer` directly;
+config `recovery.target` replaces event/payload; signals `gate-recovering`/`gate-recovered`
+→ `config.onState`; `autoPatch` dropped (explicit `featGate.request`). Docs: js-ext
+sections in wake-up.md + http-gate.md, consumers rows (plst ext vendoring).
+Tests: `back/test/wake-up-ext.test.mjs` (8) + `http-gate-ext.test.mjs` (3) — suite
+**52/52**. Test gotchas: single-flight race (wake can FINISH before the second call —
+hold the target asleep until after the reject assertion); core tests must inject
+`deps.signal` themselves (adapter signal only exists on the adapter instance); a failed
+wake must reject (not `.catch()`-swallow) to fail the episode. plst wiring next (its
+own DECISIONS).
+
+## 2026-11-14 (11) — PLAN: js-ext namespaces for wake-up v2 + http-gate v2 (Chrome MV3 consumers)
+
+User request: keep features here, add chrome-ext versions of http-gate and wake-up. User
+choice on versioning: js-ext goes INSIDE the existing v2 dirs (a new namespace URL is not a
+mutation of published content — no version bump for "no new functions"). MV3 CSP
+(`script-src 'self'`) forbids loading bundles from feat.twc1.net at runtime → consumers
+VENDOR the files (js-node pattern).
+
+Plan:
+1. `back/src/wake-up/v2/js-ext/index.js` — port of v2's network core, NO custom element,
+   NO featBus (service worker has no shared window). Attaches `globalThis.featWakeUp`
+   exposing `wakeServer(base, opts)` → Promise {awake, attempts, elapsedMs, strategy} /
+   rejects on timeout. Same logic: snapdeploy/somdip wake POST (swallow failures) →
+   HEAD poll `/healthz` every 3s, budget 185s, 503/network = asleep, single-flight join.
+   Status surface: `onState(state, detail)` opt-in callback with waking/awake/timeout
+   (mirrors web wake-start/wake-awake/wake-timeout) so a popup can render "waking…".
+2. `back/src/http-gate/v2/js-ext/index.js` — copy of v2's pure `createGate` core + an
+   ext adapter: deps.request = fetch, deps.recover = direct featWakeUp.wakeServer call
+   (no bus), config via `globalThis.FEAT_GATE_CONFIG` or args. Same rules semantics.
+3. Mirror both to `back/features/…/v2/js-ext/`, `node --check`, `diff -r back/src
+   back/features` (ignoring known bus/global-loading drift).
+4. `back/docs/wake-up.md` + `http-gate.md`: js-ext sections (Environments, Inputs,
+   Outputs, Consumers = plst ext vendor).
+5. `back/test/wake-up-ext.test.mjs` + reuse gate core via the js-ext bundle eval:
+   host detection, wake POST for snapdeploy only, poll-until-awake, single-flight,
+   timeout; gate 503/network → wake → retry once. `node --test` green.
+6. plst side (recorded in plst/DECISIONS.md too): vendor sync into `ext/vendor/feat/`,
+   manifest wiring, popup call() wake-retry, DEFAULT_SERVER → snapdeploy backend.
+Nothing committed.
+
+## 2026-11-14 (10) — RESULT: committed + deployed 9789591 (`-d`)
+
+Commit `9789591` ("http-gate v2 NETWORK rule + feat version badge on docs/root via
+version-display -d;") shipped BOTH pending worktrees: http-gate v2 (spec/docs/tests/bundle)
+and the version badge. Tag `v0.0.29.0.0.0`, deploy reported success. NOTE: prod lagged
+~5 min — /version.json 404 and http-gate/v2 404 right after the deploy message, then all
+live (version.json → 0.0.29, v2 → 200, manifest latest v2, badge markup on / and /docs
+pages). Don't panic on an immediate-post-deploy 404; recheck after a few minutes before
+assuming a failed sync. (This deploy also clears the http-gate v2 "redeploy feat" user
+action from (8); plst still needs its own redeploy.)
+
 ## 2026-11-14 (9) — RESULT: feat version badge on docs + root page, via version-display — done
 
 `back/app.py` only: `_read_app_version()` parses the pyproject version once at startup

@@ -68,11 +68,33 @@ target) at build time.
 its requests through the gate; http-gate + wake-up v2 (`manual`) fill the slot together.
 See know/entries/feature-slots.md and `/docs/wake-up` (trigger modes).
 
+## js-ext namespace (v2)
+
+Chrome MV3 extension consumers: same pure core (`createGate`), no featBus (no shared
+window in a service worker) — recovery is a **direct** `featWakeUp.wakeServer` call
+(wake-up v2 `js-ext`, vendored alongside). MV3 CSP forbids remote scripts, so consumers
+vendor both files. Config via `globalThis.FEAT_GATE_CONFIG`:
+
+    globalThis.FEAT_GATE_CONFIG = {
+      rules:    [{ on: 'ERROR', trigger: 503 }, { on: 'NETWORK' }],
+      recovery: { target: 'https://…containers.snapdeploy.app' },
+      timeoutMs: 200000,
+      onState:  (state, detail) => { … },  // optional UI hint
+    };
+    featGate.request(url, init);
+
+Differences from js-web: `recovery.target` replaces `recovery.event`/`payload` (no bus
+addressing — the provider is fixed); gate signals are `gate-recovering`/`gate-recovered`
+delivered to `config.onState` instead of bus `global-loading-*` (no global-loading in an
+extension); `autoPatch` is absent (the ext calls `featGate.request` explicitly). Wake
+state flows through `onState` too: pass the same callback to render "waking…" UI.
+
 ## Consumers
 
 | project | language | notes |
 |---|---|---|
 | plst | js-web (React web) | planned: route fetch layer through the gate (wiring pending) |
+| plst ext | js-ext (Chrome MV3) | vendored; popup `call()` routes through the gate |
 
 ## Versions
 
