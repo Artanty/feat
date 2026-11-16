@@ -159,3 +159,46 @@ noy-cold retry + noy-never-wakes budget) — suite **77/77**. Local flask manife
 wake-up latest v4, route 200; in-page eval defines the element. NOT deployed —
 feat.twc1.net 404s on /wake-up/v4/js-web/ until feat's `-d` (verified live); consumer
 stat web pins v4 in feat.ts (needs its own `-d` after feat's).
+
+## 2026-11-16 (2) — PLAN: new feature `thru` v1 (py) — backend request pass-through
+
+User intent: any backend should be able to pass outer requests through itself (origin:
+noy make-request; needed e.g. because the user's local network can't reach Render —
+stat@web could route via a thru-hosting backend). The feature moves to feat as a shared,
+slot-injectable backend feature — python servers first (Flask). Future: a language-agnostic
+backend skeleton ("framework but simpler") once more backend features exist.
+
+Plan:
+1. `back/src/thru/v1/py/` + mirrored to `back/features/thru/v1/py/` (namespace `py`,
+   like logging/db-diag): standalone `thru.py` exposing a Flask **Blueprint** `thru_bp`
+   (route `GET|POST /thru`): query `target` (required, http/https only — SSRF guard),
+   `method` (default GET), `body` (url-encoded JSON), `timeout_s` (default 30).
+   Implementation via stdlib urllib (zero deps for any consumer). Response MIRRORS the
+   upstream: same status, content-type, body + `X-Thru-Elapsed-Ms`; CORS `*`
+   (after_request) — browser consumers are the point. Optional `THRU_ALLOWED_HOSTS`
+   (comma allowlist) + `THRU_DISABLED=true` envs.
+2. First consumer = feat itself (dogfood): `back/app.py` registers thru_bp; verify on
+   :5477/thru. noy (python now) can adopt later; stat web may route gatedFetch via a
+   thru host — separate later step.
+3. `back/docs/thru.md` (how it works, envs, slot `backend-thru`, consumers, versions).
+4. `back/test/test_thru_py.py` — flask test_client + mocked _fetch: happy path, method
+   passthrough, missing target, bad scheme, timeout error, allowlist, disabled.
+5. know `feature-slots.md`: add **backend slots** section — `backend-thru` slot semantics
+   (HTTP-layer injection, config flag `FEAT_THRU=true` in the project's deploy env decides
+   injection; serf vendoring = future pipeline step) + the backend-skeleton vision note.
+
+## 2026-11-16 (2) — RESULT: thru v1 shipped (py) + feat dogfood, 45 py / 77 js
+
+Done, nothing committed. `src+features thru/v1/py/{thru.py,__init__.py}`: Flask Blueprint
+thru_bp, route GET|POST /thru (target/method/body/timeout_s), stdlib-urllib _fetch,
+mirrors upstream status+content-type+body + X-Thru-Elapsed-Ms, CORS * after_request,
+502 envelope on connect errors, 400s (missing target / non-http scheme / bad method),
+THRU_ALLOWED_HOSTS allowlist (403), THRU_DISABLED (503). Docs docs/thru.md (slot
+`backend-thru`, config flag FEAT_THRU=true, consumers feat(dogfood)/noy/stat candidates).
+feat app.py dogfoods it (importlib-by-path from features/, register thru_bp) — live
+verified on :5477 (thru→manifest 200, bad scheme 400), server stopped after.
+Tests test/test_thru_py.py (9): py suite 45/45, js suite 77/77. Test gotcha: lambda
+param `body` shadowed the fake's closure body — bind fakes via default args.
+know feature-slots.md gained the Backend slots section (backend-thru + skeleton vision).
+Pending decisions for the user: wire noy's make-request onto thru (dedupe), stat@web
+fallback routing via a thru host, serf-side vendoring when FEAT_THRU=true.

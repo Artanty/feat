@@ -68,6 +68,18 @@ JS_MIMES = {
 
 app = Flask(__name__)
 
+# thru feature dogfood (features/thru/v1/py — vendored copy, see docs/thru.md): lets
+# other apps pass their outer requests through feat's own network at GET|POST /thru
+import importlib.util as _ilu
+
+_thru_spec = _ilu.spec_from_file_location(
+    "feat_thru", Path(__file__).resolve().parent / "features" / "thru" / "v1" / "py" / "thru.py"
+)
+_thru_mod = _ilu.module_from_spec(_thru_spec)
+sys.modules["feat_thru"] = _thru_mod
+_thru_spec.loader.exec_module(_thru_mod)
+app.register_blueprint(_thru_mod.thru_bp)
+
 # feat's own version badge on the docs + index pages, served by version-display.
 # The host-page rule `deploy-info{position:static}` overrides the shadow :host
 # fixed-positioning, so the badge flows inline in the top row instead of

@@ -1,0 +1,120 @@
+"""thru feature — request pass-through for backend servers (python/Flask).
+
+Contract: back/docs/thru.md. Consumers VENDOR this file and register the blueprint:
+
+    from thru import thru_bp
+    app.register_blueprint(thru_bp)          # serves GET|POST /thru
+
+A backend hosting thru lets other apps (typically a browser frontend that cannot reach
+some origin directly — e.g. the user's network blocks the target host) make that request
+through the backend instead: the backend's network does the fetch and mirrors the
+upstream response back. Origin: noy/back's make-request; generalized here as a feat
+feature so ANY backend can host it (python first).
+
+Route (GET or POST /thru), query params:
+    target    (required) absolute http(s) URL to hit
+    method    get|post|put|patch|delete (default: get)
+    body      url-encoded JSON body for non-get methods
+    timeout_s overall budget, default 30
+
+Response mirrors the upstream request: same status, content-type and body, plus
+`X-Thru-Elapsed-Ms`. Envs (read at call time): THRU_ALLOWED_HOSTS (comma-separated
+hostname allowlist; unset = any host), THRU_DISABLED=true (503).
+
+Stdlib only (urllib) — no consumer dependencies. SSRF guard: http/https schemes only
+plus the optional allowlist; the feature is public by design (like noy's proxy), so
+consumers behind an admin boundary should set the allowlist.
+"""
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+
+from flask import Blueprint, Response, request
+
+ALLOWED_METHODS = ("get", "post", "put", "patch", "delete")
+DEFAULT_TIMEOUT_S = 30
+
+
+def _allowed(target_host: str) -> bool:
+    allow = os.environ.get("THRU_ALLOWED_HOSTS", "").strip()
+    if not allow:
+        return True
+    return target_host in {h.strip().lower() for h in allow.split(",") if h.strip()}
+
+
+def _fetch(url: str, method: str, body: str, timeout_s: int):
+    """Perform the upstream request. Standalone so tests can mock it.
+
+    Returns (status, content_type, body_bytes). Raises urllib.error.URLError on
+    connect/timeout failures (surfaced as 502 with the reason in X-Thru-Error).
+    """
+    data = None
+    headers = {"user-agent": "feat-thru/1"}
+    if body and method != "get":
+        data = body.encode("utf-8")
+        headers["content-type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method.upper(), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            return resp.status, resp.headers.get("content-type", "application/octet-stream"), resp.read()
+    except urllib.error.HTTPError as e:
+        # an HTTP error IS a response — mirror it, only connect-level errors raise
+        return e.code, e.headers.get("content-type", "application/octet-stream"), e.read()
+
+
+thru_bp = Blueprint("thru", __name__)
+
+
+@thru_bp.route("/thru", methods=["GET", "POST"])
+def thru():
+    if os.environ.get("THRU_DISABLED", "").strip().lower() == "true":
+        return Response(json.dumps({"request": "error", "error": "thru disabled"}), status=503,
+                        content_type="application/json")
+
+    target = (request.args.get("target") or "").strip()
+    method = (request.args.get("method") or "get").strip().lower()
+    body = request.args.get("body") or ""
+    try:
+        timeout_s = int(request.args.get("timeout_s") or DEFAULT_TIMEOUT_S)
+    except ValueError:
+        timeout_s = DEFAULT_TIMEOUT_S
+
+    if not target:
+        return Response(json.dumps({"request": "error", "error": "missing target"}), status=400,
+                        content_type="application/json")
+    if not target.lower().startswith(("http://", "https://")):
+        return Response(json.dumps({"request": "error", "error": "target must be http(s)"}), status=400,
+                        content_type="application/json")
+    if method not in ALLOWED_METHODS:
+        return Response(json.dumps({"request": "error", "error": f"method must be {'|'.join(ALLOWED_METHODS)}"}),
+                        status=400, content_type="application/json")
+
+    from urllib.parse import urlsplit
+    host = urlsplit(target).hostname or ""
+    if not _allowed(host.lower()):
+        return Response(json.dumps({"request": "error", "error": f"host not allowed: {host}"}), status=403,
+                        content_type="application/json")
+
+    started = time.monotonic()
+    try:
+        status, content_type, payload = _fetch(target, method, body, timeout_s)
+    except Exception as e:  # connect/timeout/TLS — no upstream response to mirror
+        resp = Response(json.dumps({"request": "error", "error": str(e), "target": target}), status=502,
+                        content_type="application/json")
+        resp.headers["X-Thru-Elapsed-Ms"] = str(int((time.monotonic() - started) * 1000))
+        resp.headers["X-Thru-Error"] = type(e).__name__
+        return resp
+
+    resp = Response(payload, status=status, content_type=content_type)
+    resp.headers["X-Thru-Elapsed-Ms"] = str(int((time.monotonic() - started) * 1000))
+    return resp
+
+
+@thru_bp.after_request
+def _cors(resp: Response) -> Response:
+    # browser consumers are the point — the target origin is often unreachable from
+    # the page's network, so the thru host must be readable cross-origin
+    resp.headers.setdefault("Access-Control-Allow-Origin", "*")
+    return resp
