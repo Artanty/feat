@@ -25,6 +25,9 @@ URL-parsed wake 'way' (strategy):
 4. **`mode="noy"`** — instead of doing the work itself, the component calls noy/back's
    `GET {proxy}/make-wake-request?target=…&app=…` which wakes (and waits) server-side;
    the component reads `{request: "completed", wake: {awake, attempts, elapsedMs, strategy}}`.
+   v4: a network rejection from the proxy (no HTTP response — e.g. noy is itself a cold
+   Timeweb VH Passenger app that fails fast at ~50ms while spawning) is RETRIED every 3s
+   within the wake budget; "noy unreachable" only after the budget ends.
 
 The target must send CORS headers on `HEAD` (plst's backend reflects any origin) — that is
 what makes the real status readable cross-origin.
@@ -109,7 +112,7 @@ same v2 wake core as a plain module — attach it to `globalThis.featWakeUp`. MV
 - Direct mode polls `HEAD <base>/healthz` (the lightweight probe), not the bare origin.
 
 ## Consumers
-| stat | js-web (React web) | v3 manual + http-gate; wakes the Render back (render way, URL-parsed) |
+| stat | js-web (React web) | v4 manual + http-gate; wakes the Render back via noy (render way, URL-parsed, cold-noy retry) |
 
 | project | language | notes |
 |---|---|---|
@@ -124,3 +127,6 @@ same v2 wake core as a plain module — attach it to `globalThis.featWakeUp`. MV
   `featBus.serve('wake-up')` with single-flight join, fixed-width badge counter.
 - **v3** (2026-11-15) — URL-parsed wake way: `*.onrender.com` → render strategy, unknown
   hosts → poll; snapdeploy wake POST fires only for snapdeploy hosts. No new attributes.
+- **v4** (2026-11-16) — noy mode survives a cold noy (TW VH fast-fail): make-wake-request
+  network failures retried every 3s within the wake budget; bus payload proxy/project now
+  reach runNoy (v3 read only attributes).

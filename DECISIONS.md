@@ -130,3 +130,32 @@ global-loading v1, http-gate v2, version-display v4 as baked bootstrap slots fro
 host (FEAT_URL env; local feat docs Consumers rows updated). Browser-verified against
 local feat :5477 (see stat/DECISIONS.md 2026-11-15 (2)). feat itself unchanged — no
 version bumps, docs-only edit.
+
+## 2026-11-16 — PLAN: wake-up v4 — noy mode survives a cold noy (TW VH)
+
+User HAR (stat.twc1.net 10:44): feat warm now works (manifest retry → scripts loaded),
+gate fired the wake, but `noy.twc1.net/make-wake-request` died FAST at 47ms (status 0) —
+noy is a cold Passenger app on TW VH too (see know timeweb-vh-request-timeouts). v3's
+runNoy is a single fetch: one fast network failure = permanent "noy unreachable".
+Plan (v4 — v3 published, never edit in place):
+1. Copy v3 → v4 (js-web + js-ext). runNoy wraps its fetch in a retry loop: on network
+   rejection (no HTTP response = cold/waking noy), retry every 3s while the existing
+   wake budget (`timeout`, default 185s) lasts; only then "noy unreachable". Any actual
+   HTTP response is processed exactly as before. attempts++ per try.
+2. Mirror to back/features, wake-up.md (How-it-works noy bullet + v4 row), contract: 4.
+3. Tests: v4 ext suite (copy of v3's) + noy-cold retry test (network errors then success)
+   + noy-never-wakes timeout test. Suite green.
+4. stat consumer: feat.ts wake-up row v3 → v4 (logged in stat DECISIONS).
+
+## 2026-11-16 — RESULT: wake-up v4 shipped locally (noy cold retry), 77/77
+
+Done, nothing committed. v4 in src+features (js-web + js-ext): runNoy fetch wrapped in a
+retry loop — network rejection (cold TW-VH noy, fail-fast ~50ms) retried every 3s within
+the wake budget, "noy unreachable" only at budget end; any HTTP response handled as
+before. js-web runNoy(target, overrides) now receives the bus payload proxy/project (v3
+read only attributes — latent bug, attrs happened to be set). contract: 4. Docs wake-up.md
+(noy bullet + v4 row + stat consumer row → v4). Tests: wake-up-ext-v4.test.mjs (13, incl.
+noy-cold retry + noy-never-wakes budget) — suite **77/77**. Local flask manifest:
+wake-up latest v4, route 200; in-page eval defines the element. NOT deployed —
+feat.twc1.net 404s on /wake-up/v4/js-web/ until feat's `-d` (verified live); consumer
+stat web pins v4 in feat.ts (needs its own `-d` after feat's).
