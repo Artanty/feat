@@ -1,0 +1,53 @@
+{
+  "envelopeVersion": 1,
+  "remoteId": "version-display",
+  "name": "Version",
+  "netAllowlist": [],
+  "card": {
+    "log_id": "version-display",
+    "variables": [
+      { "name": "version", "type": "string", "value": "0.0.0.0.0.0" },
+      { "name": "project", "type": "string", "value": "unknown" },
+      { "name": "namespace", "type": "string", "value": "unknown" },
+      { "name": "expanded", "type": "boolean", "value": false }
+    ],
+    "states": [
+      {
+        "state_id": 0,
+        "div": {
+          "type": "container",
+          "width": { "type": "match_parent" },
+          "height": { "type": "wrap_content" },
+          "paddings": { "left": 8, "right": 8, "top": 4, "bottom": 4 },
+          "items": [
+            {
+              "type": "text",
+              "text": "@{project + ' · ' + version}",
+              "font_size": 12,
+              "font_weight": "medium",
+              "text_color": "#6B7280",
+              "width": { "type": "match_parent" },
+              "accessibility": { "description": "Version badge — tap for details" },
+              "actions": [
+                {
+                  "typed": {
+                    "type": "set_variable",
+                    "variable_name": "expanded",
+                    "value": { "type": "boolean", "value": "@{!expanded}" }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "@{expanded ? ('namespace: ' + namespace + ' · consumer of feat /version-display/v5/sdui') : ''}",
+              "font_size": 11,
+              "text_color": "#9CA3AF",
+              "width": { "type": "match_parent" }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
