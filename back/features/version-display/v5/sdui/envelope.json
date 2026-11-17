@@ -22,6 +22,13 @@
           "items": [
             {
               "type": "text",
+              "text": "@{expanded ? ('namespace: ' + namespace) : ''}",
+              "font_size": 11,
+              "text_color": "#9CA3AF",
+              "width": { "type": "match_parent" }
+            },
+            {
+              "type": "text",
               "text": "@{project + ' · ' + version}",
               "font_size": 12,
               "font_weight": "medium",
@@ -37,13 +44,6 @@
                   }
                 }
               ]
-            },
-            {
-              "type": "text",
-              "text": "@{expanded ? ('namespace: ' + namespace + ' · consumer of feat /version-display/v5/sdui') : ''}",
-              "font_size": 11,
-              "text_color": "#9CA3AF",
-              "width": { "type": "match_parent" }
             }
           ]
         }

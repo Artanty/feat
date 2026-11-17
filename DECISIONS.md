@@ -187,6 +187,45 @@ Plan:
    (HTTP-layer injection, config flag `FEAT_THRU=true` in the project's deploy env decides
    injection; serf vendoring = future pipeline step) + the backend-skeleton vision note.
 
+## 2026-11-17 (2) — RESULT: v5 js-web shipped locally (details above badge)
+
+Done, nothing committed. features/version-display/v5/js-web/{index.js,render.js} copied
+from v4: shadow DOM order flipped — detail table FIRST, badge LAST (table uses
+margin-bottom: 4px), so the fixed bottom-right badge never moves on expand; details grow
+upward. Fallback renderer in index.js (renamed renderV5) kept markup-compatible with
+render.js. Shell/manifest/adopt-latest logic unchanged (same stable <deploy-info> class;
+manifest auto-discovers v5 → /latest/js-web consumers pick it up after deploy).
+Verified: node --check both, module import OK, stub-render asserts detail-before-badge +
+margin-bottom. NOT deployed — needs `-d;`. v5 sdui envelope got the same flip earlier
+this session.
+
+## 2026-11-17 (2) — PLAN: version-display v5 js-web — details above badge
+
+User request: add js-web to v5 (like v4) with the expand-upward behavior just applied to
+the v5 sdui envelope. In v4 the detail table renders AFTER the badge in the shadow DOM,
+so expanding moves the badge up (host grows from its bottom anchor). v5 fix: DOM order
+flipped — detail table FIRST, badge LAST (table margin-bottom instead of margin-top), so
+the badge never moves and details appear above it.
+Plan: copy v4 js-web {index.js, render.js} into features/version-display/v5/js-web/,
+flip the order in render.js AND in the inlined fallback renderer of index.js (they must
+stay markup-compatible), bump v4→v5 comments/names, node --check both. No src/ mirror
+(v3/v4 established the features-only pattern for this feature).
+
+## 2026-11-17 — RESULT: v5 sdui details expand upward — done
+
+Envelope items reordered: namespace-details text now FIRST, badge text SECOND (keeps its
+tap action + accessibility). Collapsed state is unchanged visually (details text is
+empty string); on expand the wrap-content container grows upward from its bottom-right
+anchor instead of shifting the badge. JSON validated. Envelope-only edit, no tests.
+
+## 2026-11-17 — PLAN: version-display v5 sdui — details expand upward
+
+User issue: badge is fixed bottom-right; on click, details render AFTER the badge text
+in the container items → the block grows downward (position shifts/overflows). Fix:
+reorder items in the v5 sdui envelope — details text first, badge text second, so the
+bottom-anchored container grows upward. Envelope-only edit in back/features (v5 sdui
+lives only there, no src mirror, no published-version conflict — same in-progress v5).
+
 ## 2026-11-16 (2) — RESULT: thru v1 shipped (py) + feat dogfood, 45 py / 77 js
 
 Done, nothing committed. `src+features thru/v1/py/{thru.py,__init__.py}`: Flask Blueprint
