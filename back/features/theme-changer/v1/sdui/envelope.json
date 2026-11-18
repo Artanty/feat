@@ -1,0 +1,42 @@
+{
+  "envelopeVersion": 1,
+  "remoteId": "theme-changer",
+  "name": "Theme",
+  "netAllowlist": [],
+  "card": {
+    "log_id": "theme-changer",
+    "states": [
+      {
+        "state_id": 0,
+        "div": {
+          "type": "container",
+          "width": { "type": "wrap_content" },
+          "height": { "type": "wrap_content" },
+          "paddings": { "left": 8, "right": 8, "top": 4, "bottom": 4 },
+          "items": [
+            {
+              "type": "text",
+              "text": "@{theme == 'dark' ? '☾ Dark' : '☀ Light'}",
+              "font_size": 12,
+              "font_weight": "medium",
+              "text_color": "@{theme == 'dark' ? '#9CA3AF' : '#6B7280'}",
+              "accessibility": { "description": "Theme toggle — tap to switch light/dark" },
+              "actions": [
+                {
+                  "typed": {
+                    "type": "set_variable",
+                    "variable_name": "theme",
+                    "value": {
+                      "type": "string",
+                      "value": "@{theme == 'dark' ? 'light' : 'dark'}"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
