@@ -94,3 +94,8 @@ know/entries/feature-slots.md (backend slots section).
   Access-Control-Request-Headers, Max-Age 600) + allow-methods/allow-headers on every
   response; `provide_automatic_options=False` on the main route (automatic OPTIONS
   shadows an explicit one). No behavioral change to GET/POST themselves.
+- **v3** (2026-11-19) — the upstream body is ALWAYS attached. v2/v1 only set the
+  request data when the caller did NOT supply a content-type header — callers that
+  send `content-type` in `headers`/`targetHeaders` (chat@web, on every call) had
+  their POST body silently dropped (live: TOTP verify arrived bodyless → 400 "code
+  must be a 6-digit string"). Content-type is now `setdefault`-ed only when absent.

@@ -149,9 +149,9 @@ def track_feature_origins():
             origins.record(match.group(1), origin)
     return None
 
-# thru feature dogfood (features/thru/v2/py — vendored copy, see docs/thru.md): lets
+# thru feature dogfood (features/thru/v3/py — vendored copy, see docs/thru.md): lets
 # other apps pass their outer requests through feat's own network at GET|POST /thru
-# (v2: explicit CORS preflight, so browsers can POST JSON bodies)
+# (v3: always send the body; v2 preflight)
 import importlib.util as _ilu
 
 _thru_spec = _ilu.spec_from_file_location(

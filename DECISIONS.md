@@ -312,3 +312,35 @@ param `body` shadowed the fake's closure body — bind fakes via default args.
 know feature-slots.md gained the Backend slots section (backend-thru + skeleton vision).
 Pending decisions for the user: wire noy's make-request onto thru (dedupe), stat@web
 fallback routing via a thru host, serf-side vendoring when FEAT_THRU=true.
+
+## 2026-11-19 (3) — PLAN: thru v3 — body dropped when caller supplies content-type
+Live bug (chat.twc1.net HAR 2026-11-20 00:14): verify POST relayed with correct
+targetBody `{"code":"464913",...}` + targetHeaders content-type:application/json →
+upstream 400 "code must be a 6-digit string". Cause in _fetch: `if body and method
+!= "get" and "content-type" not in headers: data = body.encode()` — data is only
+attached when the caller did NOT send content-type; chat always does → every chat
+POST body silently dropped. stat's GET-form never passes content-type → never hit.
+The v2 tests missed it: fake_fetch replaces _fetch, and the drop lives INSIDE _fetch.
+Plan (v3 — v2 published/deployed on feat+noy, never edit in place):
+1. src/thru/v3/py: `if body and method != "get": data = body.encode("utf-8")` +
+   `headers.setdefault("content-type", "application/json")` (send the body ALWAYS;
+   default the content-type only when absent). Mirror to features/, dogfood v2→v3.
+2. Tests: _fetch unit with monkeypatched urlopen asserting Request.data == body
+   bytes WITH caller content-type present (the regression), plus the bodyless-GET
+   case. Docs v3 row.
+3. noy vendors v3 (chat's THRU_URL host — needs noy's -d; feat's -d not urgent for
+   chat since THRU_URL=noy).
+
+## 2026-11-19 (3) — RESULT: thru v3 shipped (body always sent), py 73 / node 77
+Done, nothing committed. src+features thru/v3/py: `_fetch` attaches the body
+whenever `body and method != "get"` — v2/v1 attached it only when content-type was
+ABSENT, dropping every POST body of callers that send content-type (chat@web, every
+call). user-agent feat-thru/3. app.py dogfood v2→v3. Tests test_thru_v3_py.py (5):
+the regression unit on the REAL _fetch (monkeypatched urlopen: Request.data == body
+bytes WITH caller content-type), content-type setdefault when absent, bodyless GET,
+blueprint-level body-form pass-through, preflight still answers. py **73/73**, node
+77/0. GOTCHA (why v2 tests missed it): fake_fetch replaces _fetch and the drop lived
+INSIDE _fetch. docs/thru.md v3 row. noy vendored v3 + verified locally (echo server
+received the full verify-shaped body) — see noy DECISIONS. feat's -d NOT urgent for
+chat (THRU_URL=noy); rides the next feat deploy.
+
