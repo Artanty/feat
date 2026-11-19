@@ -1,5 +1,76 @@
 # DECISIONS
 
+## 2026-11-19 (2) — RESULT: thru v2 shipped (CORS preflight), py 68 / node 77
+
+Done, nothing committed. `src+features thru/v2/py/`: copy of v1 + explicit `OPTIONS /thru`
+preflight (echoes Access-Control-Request-Headers, fallback Content-Type; Max-Age 600) +
+ACAM/ACAH setdefault on every response; user-agent `feat-thru/2`; main route
+`provide_automatic_options=False`. GOTCHA: Flask's AUTOMATIC OPTIONS handler SHADOWS an
+explicit OPTIONS rule on the same URL (automatic wins the werkzeug match) — the first
+test run failed with ACAH=Content-Type until the flag landed. `app.py` dogfood bumped
+v1→v2 (test_client smoke: OPTIONS /thru → 200 + header echo, no dev server left
+running). Tests `test/test_thru_v2_py.py` (6: preflight echo, fallback, response CORS
+headers, v1 POST-body contract, GET, 502 envelope) — py suite **68/68**, node suite
+77 pass / 0 fail. docs/thru.md: preflight section, v2 row, chat@web consumer row.
+NOT deployed — needs feat's `-d` (user); chat@web wiring tracks in chat/DECISIONS.md.
+
+
+## 2026-11-19 (2) — PLAN: thru v2 (py) — CORS preflight so browsers can POST /thru
+
+Consumer need: chat@web (deployed on the Timeweb VDS) cannot reach its Render-hosted
+chat/back from the user's network; it will route API calls through feat's thru (the
+stat THRU_URL transport). chat needs POST /thru with a JSON body — targetHeaders carries
+auth headers (X-Totp-Auth/X-Relay-Key/X-TG-Token) and targetBody carries Russian-text
+bodies that would blow URL limits as GET query params. A cross-origin JSON POST is
+preflighted, and v1 answers OPTIONS only via Flask's automatic OPTIONS — no
+Access-Control-Allow-Headers → the browser kills the preflight and the POST never flies
+(stat dodged this by using GET-only).
+Plan (v2 — v1 is published, never edit in place):
+1. `back/src/thru/v2/py/` — copy v1; add an explicit `OPTIONS /thru` preflight route:
+   ACAO `*`, ACAM `GET, POST, OPTIONS`, ACAH = echo the request's
+   Access-Control-Request-Headers (fallback `Content-Type`), Access-Control-Max-Age 600.
+   `after_request` additionally sets ACAM/ACAH on every thru response. Version comment
+   bump; user-agent `feat-thru/2`.
+2. Mirror to `back/features/thru/v2/py/`; `back/app.py` dogfood import v1 → v2.
+3. `back/docs/thru.md`: preflight section + v2 row + chat consumer row.
+4. `back/test/test_thru_v2_py.py` (load the SHIPPED v2 copy by path): OPTIONS echoes
+   requested headers (ACAH/ACAM/ACAO/Max-Age), ACAH present on POST responses, POST
+   body-form + GET still behave per v1 contract. Run py + node suites.
+5. NOT deployed — needs feat's `-d` (user); the chat/web consumer wiring is tracked in
+   chat/DECISIONS.md.
+
+## 2026-11-19 — PLAN: origin tracking per feature + collapsible list on `/`
+
+User request: remember which addresses (origins) use each feature — caught at the
+routing level — and show a collapsible unique-address list per feature on `/`.
+Plan (app-level like the dark-mode change, NOT a new library feature):
+1. `back/app.py`: origins tracker — a `before_request` hook matching feature URLs
+   (`/<feature>/v<n>/…` and `/<feature>/latest…`); origin = `Origin` header, fallback
+   `Referer` parsed to scheme+host; no header → no record. Store
+   `back/logs/origins.json` as `{feature: {origin: {count, last}}}` — load at start,
+   write atomically (tmp+rename) ONLY when a new origin/feature appears, tolerate
+   write errors. Thread lock. `back/logs/origins.json` added to .gitignore.
+2. `/` index: per feature, after the versions table, a `<details><summary>` with the
+   origin count and a `<ul>` of unique origins sorted by last-seen desc.
+3. Tests `back/test/test_origins_py.py` — flask test_client + temp store: Origin
+   recorded, Referer fallback, no-header skipped, dedupe (count increments), 404
+   feature not recorded, index page shows the details list. Run full py suite.
+
+## 2026-11-19 — RESULT: origin tracking shipped locally, py suite 62/62
+
+Done, nothing committed. `back/app.py`: `before_request` hook matches feature URLs
+(`FEATURE_URL_RE`, v<n>/latest, feature dir must exist) → origin from `Origin` header
+(normalized to scheme+host) with `Referer` fallback; no header = no record.
+`OriginTracker` persists `back/logs/origins.json` `{feature: {origin: {count, last}}}`
+(atomic tmp+os.replace, written only on NEW-origin events, thread lock, load-fault
+tolerant). `/` renders per feature a `<details><summary>used by N origins</summary>`
+list (sorted last-seen desc, count + last timestamp) after the versions table.
+`back/logs/origins.json` gitignored. Tests `test/test_origins_py.py` (9): full py
+suite **62/62**. Gotcha: hook must be registered AFTER `app = Flask(...)`; unknown
+features are recorded by the hook before the handler 404s → dir-exists check in the
+hook. NOT deployed (needs `-d;`). Note: versioned URLs are cache-immutable in
+browsers, so unique origins accrue mostly via /latest + manifest + first loads.
+
 
 --- rotated to DECISIONS-archive.md (2026-11-15, 793→current-thread-only) ---
 ## 2026-11-14 (12) — RESULT: js-ext http-gate config was captured at load — fixed to lazy

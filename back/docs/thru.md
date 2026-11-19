@@ -1,6 +1,6 @@
 # thru
 
-`features/thru/v1` (`py` namespace) — request pass-through for backend servers: a Flask
+`features/thru` v1/v2 (`py` namespace) — request pass-through for backend servers: a Flask
 blueprint that lets other apps make their outer requests THROUGH the hosting backend.
 Origin: noy/back's `make-request`; generalized as a feat feature so any backend can host
 it — python servers first, other languages when the backend skeleton lands.
@@ -22,19 +22,37 @@ from thru import thru_bp
 app.register_blueprint(thru_bp)
 ```
 
-Route `GET|POST /thru`, query params:
+Route `GET|POST /thru`, query params (`POST` may instead carry them as a JSON object
+body with `target*`-prefixed keys — `target`, `targetMethod`, `targetBody`,
+`targetHeaders`, `targetTimeoutS`; query params override body fields; `targetBody` may
+be a JSON object, serialized as-is, or a string, forwarded verbatim):
 
 | param | default | meaning |
 |---|---|---|
 | `target` | — (required) | absolute http(s) URL to hit |
 | `method` | `get` | get/post/put/patch/delete |
 | `body` | — | url-encoded JSON body for non-get methods |
+| `headers` | — | url-encoded JSON object of extra upstream headers (e.g. `{"Authorization": "Bearer ..."}`); hop-by-hop headers (host, content-length, …) are dropped, non-JSON / non-object → 400 |
 | `timeout_s` | `30` | overall budget, seconds |
 
 Response MIRRORS the upstream request: same status, content-type and body, plus
 `X-Thru-Elapsed-Ms`; connect-level failures → 502 JSON `{request: "error", error, target}`
 with `X-Thru-Error`. CORS `Access-Control-Allow-Origin: *` — browser consumers are the
 point. SSRF guard: http/https only + optional allowlist.
+
+### CORS preflight (v2)
+
+A GET /thru with everything in query params is a simple request — no preflight. A POST
+with `Content-Type: application/json` (the form browsers use to pass `targetHeaders` /
+JSON `targetBody` — Russian-text bodies would blow URL limits as GET params) is
+PREFLIGHTED: v2 answers `OPTIONS /thru` explicitly, echoing the request's
+`Access-Control-Request-Headers` (fallback `Content-Type`), `Access-Control-Allow-Methods:
+GET, POST, OPTIONS`, `Access-Control-Max-Age: 600`, and every response carries
+allow-origin/methods/headers. v1 relied on Flask's automatic OPTIONS, which omits
+Allow-Headers — the browser killed the preflight and the POST never flew (GET-only
+consumers never noticed). The main route sets `provide_automatic_options=False` — the
+automatic handler otherwise SHADOWS the explicit preflight route (same URL, automatic
+wins the match).
 
 ## Environments
 
@@ -56,11 +74,23 @@ know/entries/feature-slots.md (backend slots section).
 
 | project | language | notes |
 |---|---|---|
-| feat | py | dogfood: feat's own back registers thru_bp |
+| feat | py | dogfood: feat's own back registers thru_bp (v2) |
 | noy | py | candidate: replace/extend make-request (not wired yet) |
-| stat@web | browser | candidate: route gated calls via a thru host when direct fails (not wired yet) |
+| stat@web | browser | gatedFetch THRU_URL transport: GET-query form (preflight-free) |
+| chat@web | browser | POST-body form through feat http-gate v2: all chat/back traffic via thru (Render unreachable from the app's users) |
 
 ## Versions
 
 - **v1** (2026-11-16) — Flask blueprint, mirrored responses, CORS, allowlist/disable envs,
   stdlib-only upstream fetch.
+- **v1.1** (2026-11-19) — `headers` query param: JSON object of extra upstream headers
+  (Authorization etc.) so authed endpoints (e.g. flow `/retrigger`) work through thru;
+  hop-by-hop headers never forwarded.
+- **v1.2** (2026-11-19) — `POST /thru` accepts the params as a JSON object body with
+  `target*`-prefixed keys (`target`/`targetMethod`/`targetBody`/`targetHeaders`/
+  `targetTimeoutS`); query params override body fields. Before, the HTTP body of a
+  POST was silently ignored.
+- **v2** (2026-11-19) — CORS preflight: explicit `OPTIONS /thru` (echoes
+  Access-Control-Request-Headers, Max-Age 600) + allow-methods/allow-headers on every
+  response; `provide_automatic_options=False` on the main route (automatic OPTIONS
+  shadows an explicit one). No behavioral change to GET/POST themselves.

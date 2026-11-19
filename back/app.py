@@ -21,11 +21,16 @@ Access-Control-Allow-Origin: * — consumers are deployed apps on other
 hosts, so bundles must be cross-origin loadable.
 """
 
+import json
 import logging
+import os
 import re
 import sys
+import threading
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, abort, redirect, request, send_from_directory
 
@@ -41,6 +46,70 @@ log = logging.getLogger("feat")
 
 FEATURES_DIR = Path(__file__).resolve().parent / "features"
 DOCS_DIR = Path(__file__).resolve().parent / "docs"
+
+# origin tracking: which addresses use each feature (unique per feature), shown on /
+ORIGINS_PATH = Path(__file__).resolve().parent / "logs" / "origins.json"
+# requests to feature URLs carry the consumer's address in Origin (cross-origin
+# fetches) or Referer (same-origin navigations / older browsers)
+FEATURE_URL_RE = re.compile(r"^/([a-z0-9][a-z0-9-]*)(?:/v\d+/|/latest)")
+
+
+def _request_origin() -> "str | None":
+    origin = request.headers.get("Origin")
+    if origin and "://" in origin:
+        return urlparse(origin)._replace(path="", params="", query="", fragment="").geturl()
+    referer = request.headers.get("Referer")
+    if referer:
+        parsed = urlparse(referer)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+    return None
+
+
+class OriginTracker:
+    """Unique consumer origins per feature, persisted to a JSON file.
+
+    Writes happen only when a NEW origin (or feature) is seen — steady-state
+    traffic is read-only. Structure: {feature: {origin: {count, last}}}.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.lock = threading.Lock()
+        self.data: "dict[str, dict[str, dict]]" = {}
+        try:
+            self.data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            pass
+
+    def record(self, feature: str, origin: str) -> None:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self.lock:
+            entry = self.data.setdefault(feature, {}).setdefault(origin, {"count": 0, "last": now})
+            if entry["count"] and entry["last"] == now:
+                # already recorded within this second — skip the disk write churn
+                entry["count"] += 1
+                return
+            entry["count"] += 1
+            entry["last"] = now
+            self._save()
+
+    def _save(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.data, indent=1, sort_keys=True))
+            os.replace(tmp, self.path)
+        except OSError as exc:
+            log.warning("origin store write failed: %s", exc)
+
+    def of(self, feature: str) -> "list[tuple[str, dict]]":
+        with self.lock:
+            items = list(self.data.get(feature, {}).items())
+        return sorted(items, key=lambda kv: kv[1]["last"], reverse=True)
+
+
+origins = OriginTracker(ORIGINS_PATH)
 
 
 def _read_app_version():
@@ -68,12 +137,25 @@ JS_MIMES = {
 
 app = Flask(__name__)
 
-# thru feature dogfood (features/thru/v1/py — vendored copy, see docs/thru.md): lets
+
+@app.before_request
+def track_feature_origins():
+    # routing-level catch: any /<feature>/v… or /latest request with a known
+    # consumer address (Origin/Referer) accumulates into the per-feature set
+    match = FEATURE_URL_RE.match(request.path)
+    if match and (FEATURES_DIR / match.group(1)).is_dir():
+        origin = _request_origin()
+        if origin:
+            origins.record(match.group(1), origin)
+    return None
+
+# thru feature dogfood (features/thru/v2/py — vendored copy, see docs/thru.md): lets
 # other apps pass their outer requests through feat's own network at GET|POST /thru
+# (v2: explicit CORS preflight, so browsers can POST JSON bodies)
 import importlib.util as _ilu
 
 _thru_spec = _ilu.spec_from_file_location(
-    "feat_thru", Path(__file__).resolve().parent / "features" / "thru" / "v1" / "py" / "thru.py"
+    "feat_thru", Path(__file__).resolve().parent / "features" / "thru" / "v2" / "py" / "thru.py"
 )
 _thru_mod = _ilu.module_from_spec(_thru_spec)
 sys.modules["feat_thru"] = _thru_mod
@@ -409,11 +491,26 @@ def index():
                 if d.name in documented
                 else ""
             )
+            known = origins.of(d.name)
+            if known:
+                items = "".join(
+                    f"<li><code>{escape(addr)}</code> "
+                    f"&times;{info['count']} &middot; last {escape(info['last'])}</li>"
+                    for addr, info in known
+                )
+                origins_html = (
+                    f"<details><summary>used by {len(known)} "
+                    f"origin{'s' if len(known) != 1 else ''}</summary>"
+                    f"<ul>{items}</ul></details>"
+                )
+            else:
+                origins_html = ""
             rows.append(
                 f"<h2>{escape(d.name)}</h2>"
                 f"<p>latest: {' &middot; '.join(latest_ns)}{docs_link}</p>"
                 "<table><tr><th>version</th><th>namespace</th><th>url</th>"
                 f"<th>connect</th></tr>{''.join(cells)}</table>"
+                f"{origins_html}"
             )
     body = "\n".join(rows) or "<p>No features published yet.</p>"
     return (

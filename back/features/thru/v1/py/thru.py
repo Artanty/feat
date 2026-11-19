@@ -11,10 +11,13 @@ through the backend instead: the backend's network does the fetch and mirrors th
 upstream response back. Origin: noy/back's make-request; generalized here as a feat
 feature so ANY backend can host it (python first).
 
-Route (GET or POST /thru), query params:
+Route (GET or POST /thru), query params (POST may instead carry them as a JSON object
+body with keys target/targetMethod/targetBody/targetHeaders/targetTimeoutS; query params
+override body fields):
     target    (required) absolute http(s) URL to hit
     method    get|post|put|patch|delete (default: get)
     body      url-encoded JSON body for non-get methods
+    headers   url-encoded JSON object of extra upstream headers (e.g. Authorization)
     timeout_s overall budget, default 30
 
 Response mirrors the upstream request: same status, content-type and body, plus
@@ -44,17 +47,25 @@ def _allowed(target_host: str) -> bool:
     return target_host in {h.strip().lower() for h in allow.split(",") if h.strip()}
 
 
-def _fetch(url: str, method: str, body: str, timeout_s: int):
+# headers that must never be caller-supplied — they describe the transport, not the
+# upstream request, and urllib manages them itself
+_HOP_HEADERS = {"connection", "content-length", "transfer-encoding", "host", "accept-encoding"}
+
+
+def _fetch(url: str, method: str, body: str, extra_headers, timeout_s: int):
     """Perform the upstream request. Standalone so tests can mock it.
 
-    Returns (status, content_type, body_bytes). Raises urllib.error.URLError on
+    extra_headers: caller-supplied headers (the `headers` query param), merged over the
+    defaults. Returns (status, content_type, body_bytes). Raises urllib.error.URLError on
     connect/timeout failures (surfaced as 502 with the reason in X-Thru-Error).
     """
     data = None
     headers = {"user-agent": "feat-thru/1"}
-    if body and method != "get":
+    headers.update({str(k).lower(): str(v) for k, v in (extra_headers or {}).items()
+                    if str(k).lower() not in _HOP_HEADERS})
+    if body and method != "get" and "content-type" not in headers:
         data = body.encode("utf-8")
-        headers["content-type"] = "application/json"
+        headers.setdefault("content-type", "application/json")
     req = urllib.request.Request(url, data=data, method=method.upper(), headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
@@ -73,11 +84,44 @@ def thru():
         return Response(json.dumps({"request": "error", "error": "thru disabled"}), status=503,
                         content_type="application/json")
 
-    target = (request.args.get("target") or "").strip()
-    method = (request.args.get("method") or "get").strip().lower()
-    body = request.args.get("body") or ""
+    # POST /thru may carry target/targetMethod/targetBody/targetHeaders/targetTimeoutS
+    # as a JSON object body; query params override body fields, so both forms compose
+    # and GET stays as-is
+    params = {}
+    if request.method == "POST":
+        params = request.get_json(silent=True)
+        if params is None:
+            params = {}
+        elif not isinstance(params, dict):
+            return Response(json.dumps({"request": "error", "error": "json body must be an object"}), status=400,
+                            content_type="application/json")
+
+    target = (request.args.get("target") or str(params.get("target") or "")).strip()
+    method = (request.args.get("method") or str(params.get("targetMethod") or "get")).strip().lower()
+
+    body = request.args.get("body")
+    if body is None and "targetBody" in params:
+        body = params["targetBody"] if isinstance(params["targetBody"], str) else json.dumps(params["targetBody"])
+    body = body or ""
+
+    extra_headers = {}
+    if "targetHeaders" in params and request.args.get("headers") is None:
+        extra_headers = params["targetHeaders"]
+        if not isinstance(extra_headers, dict):
+            return Response(json.dumps({"request": "error", "error": "targetHeaders must be a JSON object"}), status=400,
+                            content_type="application/json")
+    else:
+        raw_headers = (request.args.get("headers") or "").strip()
+        if raw_headers:
+            try:
+                extra_headers = json.loads(raw_headers)
+            except ValueError:
+                extra_headers = None
+            if not isinstance(extra_headers, dict):
+                return Response(json.dumps({"request": "error", "error": "headers must be a JSON object"}), status=400,
+                                content_type="application/json")
     try:
-        timeout_s = int(request.args.get("timeout_s") or DEFAULT_TIMEOUT_S)
+        timeout_s = int(request.args.get("timeout_s") or params.get("targetTimeoutS") or DEFAULT_TIMEOUT_S)
     except ValueError:
         timeout_s = DEFAULT_TIMEOUT_S
 
@@ -99,7 +143,7 @@ def thru():
 
     started = time.monotonic()
     try:
-        status, content_type, payload = _fetch(target, method, body, timeout_s)
+        status, content_type, payload = _fetch(target, method, body, extra_headers, timeout_s)
     except Exception as e:  # connect/timeout/TLS — no upstream response to mirror
         resp = Response(json.dumps({"request": "error", "error": str(e), "target": target}), status=502,
                         content_type="application/json")

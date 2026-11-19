@@ -33,8 +33,9 @@ def fake_fetch(monkeypatch, status=200, content_type="application/json", body=b'
     # shadow the fake's `body` closure variable
     monkeypatch.setattr(
         _mod, "_fetch",
-        lambda url, method, body, timeout_s, _s=status, _ct=content_type, _b=body:
-        calls.append({"url": url, "method": method, "body": body, "timeout_s": timeout_s})
+        lambda url, method, body, extra_headers, timeout_s, _s=status, _ct=content_type, _b=body:
+        calls.append({"url": url, "method": method, "body": body,
+                      "headers": extra_headers, "timeout_s": timeout_s})
         or (_s, _ct, _b),
     )
     return calls
@@ -48,7 +49,8 @@ def test_happy_path_mirrors_upstream(client, monkeypatch):
     assert resp.data == b'{"a": 1}'
     assert resp.headers["Access-Control-Allow-Origin"] == "*"
     assert "X-Thru-Elapsed-Ms" in resp.headers
-    assert calls == [{"url": "https://example.com/api/x", "method": "get", "body": "", "timeout_s": 30}]
+    assert calls == [{"url": "https://example.com/api/x", "method": "get", "body": "",
+                      "headers": {}, "timeout_s": 30}]
 
 
 def test_method_and_body_passthrough(client, monkeypatch):
@@ -67,7 +69,7 @@ def test_upstream_http_error_is_mirrored_not_502(client, monkeypatch):
 
 
 def test_connect_failure_is_502_envelope(client, monkeypatch):
-    def boom(url, method, body, timeout_s):
+    def boom(url, method, body, extra_headers, timeout_s):
         raise OSError("timed out")
     monkeypatch.setattr(_mod, "_fetch", boom)
     resp = client.get("/thru?target=https://down.example.com/")
@@ -104,3 +106,74 @@ def test_disabled_env_is_503(client, monkeypatch):
     monkeypatch.setenv("THRU_DISABLED", "true")
     resp = client.get("/thru?target=https://example.com/")
     assert resp.status_code == 503
+
+
+# --- headers param (v1.1) ---------------------------------------------------
+
+
+def test_headers_query_param_forwarded(client, monkeypatch):
+    calls = fake_fetch(monkeypatch)
+    resp = client.get("/thru?target=https://example.com/x&method=post"
+                      "&headers=" + json.dumps({"Authorization": "Bearer tok"}))
+    assert resp.status_code == 200
+    assert calls[0]["headers"] == {"Authorization": "Bearer tok"}
+
+
+def test_bad_headers_json_is_400(client):
+    assert client.get("/thru?target=https://example.com/&headers=notjson").status_code == 400
+    assert client.get("/thru?target=https://example.com/&headers=[1]").status_code == 400
+
+
+# --- POST with JSON body params (v1.2) ---------------------------------------
+
+
+def test_post_json_body_params(client, monkeypatch):
+    calls = fake_fetch(monkeypatch)
+    resp = client.post("/thru", json={
+        "target": "https://example.com/retrigger",
+        "targetMethod": "post",
+        "targetHeaders": {"Authorization": "Bearer tok"},
+        "targetBody": {"project": "noy@back"},
+        "targetTimeoutS": 5,
+    })
+    assert resp.status_code == 200
+    assert calls[0]["url"] == "https://example.com/retrigger"
+    assert calls[0]["method"] == "post"
+    assert json.loads(calls[0]["body"]) == {"project": "noy@back"}
+    assert calls[0]["headers"] == {"Authorization": "Bearer tok"}
+    assert calls[0]["timeout_s"] == 5
+
+
+def test_post_query_overrides_body(client, monkeypatch):
+    calls = fake_fetch(monkeypatch)
+    resp = client.post("/thru?target=https://example.com/from-query", json={
+        "target": "https://example.com/from-body", "targetMethod": "post"})
+    assert resp.status_code == 200
+    assert calls[0]["url"] == "https://example.com/from-query"
+    assert calls[0]["method"] == "post"
+
+
+def test_post_string_body_forwarded_verbatim(client, monkeypatch):
+    calls = fake_fetch(monkeypatch)
+    resp = client.post("/thru", json={"target": "https://example.com/x", "targetMethod": "post",
+                                      "targetBody": "raw-string-body"})
+    assert resp.status_code == 200
+    assert calls[0]["body"] == "raw-string-body"
+
+
+def test_post_non_object_target_headers_is_400(client):
+    resp = client.post("/thru", json={"target": "https://example.com/", "targetHeaders": "nope"})
+    assert resp.status_code == 400
+
+
+def test_post_non_object_json_body_is_400(client):
+    resp = client.post("/thru", json=[1, 2])
+    assert resp.status_code == 400
+    assert json.loads(resp.data)["error"] == "json body must be an object"
+
+
+def test_post_non_json_body_still_query_params(client, monkeypatch):
+    calls = fake_fetch(monkeypatch)
+    resp = client.post("/thru?target=https://example.com/x")
+    assert resp.status_code == 200
+    assert calls[0]["url"] == "https://example.com/x"
