@@ -54,6 +54,16 @@ consumers never noticed). The main route sets `provide_automatic_options=False` 
 automatic handler otherwise SHADOWS the explicit preflight route (same URL, automatic
 wins the match).
 
+### Path label (v3.1)
+
+The same handler also answers `/thru/<label>` (GET|POST|OPTIONS). The label is
+DISPLAY-ONLY — the server ignores it completely; target/method/headers/body come from
+query params / POST body exactly as on bare `/thru`. It exists so browser network
+consoles show distinct request names instead of a wall of identical `/thru` entries.
+Convention: `thru-` + last path segment of the target URL
+(`/thru/thru-get-items?target=https://site.com/category/get-items`). Bare `/thru` keeps
+working; consumers can adopt labels gradually.
+
 ## Environments
 
 Read at call time (no runtime config fetch):
@@ -99,3 +109,5 @@ know/entries/feature-slots.md (backend slots section).
   send `content-type` in `headers`/`targetHeaders` (chat@web, on every call) had
   their POST body silently dropped (live: TOTP verify arrived bodyless → 400 "code
   must be a 6-digit string"). Content-type is now `setdefault`-ed only when absent.
+- **v3.1** (2026-11-20) — `/thru/<label>` (GET|POST|OPTIONS): display-only path label
+  for readable network-console names; label ignored, behavior identical to bare `/thru`.

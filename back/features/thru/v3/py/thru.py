@@ -28,7 +28,10 @@ override body fields):
     timeout_s overall budget, default 30
 
 Response mirrors the upstream request: same status, content-type and body, plus
-`X-Thru-Elapsed-Ms`. Envs (read at call time): THRU_ALLOWED_HOSTS (comma-separated
+`X-Thru-Elapsed-Ms`. v3.1: the same handler also serves `/thru/<label>` (GET|POST|OPTIONS)
+— the label is display-only and ignored; it exists so browser network consoles show
+distinct names (convention: `thru-` + last path segment of the target URL).
+Envs (read at call time): THRU_ALLOWED_HOSTS (comma-separated
 hostname allowlist; unset = any host), THRU_DISABLED=true (503).
 
 Stdlib only (urllib) — no consumer dependencies. SSRF guard: http/https schemes only
@@ -168,6 +171,16 @@ def thru():
     return resp
 
 
+# v3.1: DISPLAY-ONLY path label. /thru/<label> runs the same handler as /thru — the
+# label is ignored entirely (target/method/headers/body still come from query params or
+# POST body). It exists so browser network consoles show distinct request names
+# (e.g. /thru/thru-get-items) instead of a wall of identical /thru entries. Convention:
+# "thru-" + last path segment of the target URL (no host part — user's choice).
+@thru_bp.route("/thru/<label>", methods=["GET", "POST"], provide_automatic_options=False)
+def thru_labeled(label):
+    return thru()
+
+
 @thru_bp.route("/thru", methods=["OPTIONS"])
 def thru_preflight():
     """Explicit CORS preflight (v2): echo the browser's requested headers back.
@@ -178,6 +191,12 @@ def thru_preflight():
     resp.headers["Access-Control-Allow-Headers"] = requested or "Content-Type"
     resp.headers["Access-Control-Max-Age"] = "600"
     return resp
+
+
+@thru_bp.route("/thru/<label>", methods=["OPTIONS"])
+def thru_labeled_preflight(label):
+    # same preflight, one path deeper — a prefighted POST to /thru/<label> needs it
+    return thru_preflight()
 
 
 @thru_bp.after_request

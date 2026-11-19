@@ -118,3 +118,47 @@ def test_preflight_still_answers(client):
         "Access-Control-Request-Headers": "content-type"})
     assert resp.status_code == 200
     assert resp.headers["Access-Control-Allow-Headers"] == "content-type"
+
+
+# --- v3.1: /thru/<label> — display-only label, behaves exactly like bare /thru ---
+
+
+def test_labeled_get_same_as_bare(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        _mod, "_fetch",
+        lambda url, method, body, extra_headers, timeout_s:
+        calls.append((url, method)) or (200, "application/json", b'{"ok": true}'))
+    resp = client.get("/thru/thru-get-items?target=https://back.example/category/get-items")
+    assert resp.status_code == 200
+    assert calls == [("https://back.example/category/get-items", "get")]  # label ignored
+
+
+def test_labeled_post_body_form(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        _mod, "_fetch",
+        lambda url, method, body, extra_headers, timeout_s:
+        calls.append({"url": url, "method": method, "body": body}) or (201, "application/json", b'{}'))
+    resp = client.post("/thru/thru-get-items", json={
+        "target": "https://back.example/category/get-items",
+        "targetMethod": "post",
+        "targetBody": '{"a":1}',
+    })
+    assert resp.status_code == 201
+    assert calls[0] == {"url": "https://back.example/category/get-items",
+                        "method": "post", "body": '{"a":1}'}
+
+
+def test_labeled_missing_target_is_400(client):
+    resp = client.get("/thru/thru-get-items")
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "missing target"
+
+
+def test_labeled_preflight_answers(client):
+    resp = client.open("/thru/thru-get-items", method="OPTIONS", headers={
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"})
+    assert resp.status_code == 200
+    assert resp.headers["Access-Control-Allow-Headers"] == "content-type"
