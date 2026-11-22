@@ -41,7 +41,7 @@ Params merge from JSON body + query (query wins). Unknown placeholder → 400; b
 JSON/method/timeout → 500 recipe misconfigured; no `_TARGET` → 404; connect-level
 failure → 502. Upstream responses are MIRRORED (status/content-type/body + CORS `*`).
 `${UPPER_SNAKE}` references in templates resolve from the process env first (unset →
-500), so shared values live in one row (e.g. `${FLOW_BACK_DOMAIN}/retrigger`).
+500), so shared values live in one row (e.g. `${FLOW_BACK_URL}/retrigger`).
 
 **Params are public by contract** (URLs get logged); secrets only in `_HEADERS`/`_BODY`
 env rows. The template is the allowlist of shape: callers supply values, never structure.

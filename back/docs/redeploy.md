@@ -40,8 +40,13 @@ opened project (runtime data the slot carries).
 | project | notes |
 |---|---|
 | safe | first resident of the `project-header` slot (web FeatureSlot + local config) |
+| stat | `run-retrigger` slot in DeployTab run header — v2 with `thru=FEAT_URL/thru` (stat back sleeps on Render; direct POST dies on the unanswered CORS preflight) |
 
 ## Versions
 
+- **v2** (2026-11-23) — optional `thru` + `timeout-s` attrs: the click routes through
+  a feat thru route (`GET <thru>?target=<src>&method=post&body=…&timeout_s=…`) for
+  sleeping/cold src backends — the thru knowledge lives in the feature; hosts pass only
+  URLs as config attrs. Direct mode unchanged.
 - **v1** (2026-11-21) — js-web `<redeploy-button>`: src/project/namespace attrs, POST +
   mirrored feedback, `redeploy:done`/`feat:ready` events.

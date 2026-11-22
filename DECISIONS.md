@@ -193,3 +193,52 @@ know/entries/feature-slots.md sections renamed to "web feature slots (web)" /
 environment and that slot IDs stay as deployed (a uniform web-*/back-* ID scheme would
 be a separate migration touching consumer configs). Docs only — no code/config changes.
 
+
+## 2026-11-22 (5) — RESULT: FLOW_BACK_DOMAIN → FLOW_BACK_URL rename (docs/examples)
+
+User decision after dropping the req v2 caller-template idea (security: caller-supplied
+target + ${ENV} header refs = secret exfiltration on authless hosts — redeploy v2 NOT
+built, req v1 env-recipe design stays). Rename applied to stat/back/.env.example,
+safe/back/.env.example, feat back/spec/req.md + docs/req.md + test/req.test.mjs example
+env (row + ref together); req suite 14/14. NOT touched: req v1 source comments (published
+version) + safe's vendored req.js copy + DECISIONS history. CAVEAT: if safe PROD env
+storage has a live FLOW_BACK_DOMAIN row, rename it + its FEAT_REQ_*_TARGET ref together
+(unset ref → 500). stat recipe rows not live yet — unaffected. Nothing committed.
+
+
+## 2026-11-23 — PLAN: doctrine fix — retrigger/thru knowledge leaves stat@web
+
+User: stat app must not know about retrigger or thru — features are injected into
+slots, env/config rules what-goes-where. Yesterday's retriggerRun patch (api.service
+constructing thru + req URLs) violated that. Plan: (1) feat redeploy v2 (js-web) gains
+an optional `thru` attr — when set, the click sends GET <thru>?target=<src>&method=
+post&body={"project"}&timeout_s (default 120, attr timeout-s) — thru-knowledge lives in
+the FEATURE; URLs are attrs (config data). (2) stat web: new slot `run-retrigger`
+filled by redeploy v2 (constant config row in feat.ts, src=BACKEND_URL/req/retrigger,
+thru=FEAT_URL/thru); DeployTab's bespoke ↻ button+retriggerRun replaced by
+<FeatureSlot slot="run-retrigger" attrs={{project, namespace}}/>; retriggerRun + THRU_URL
+row deleted from api.service/.env. (3) docs: redeploy spec/docs v2, feature-slots
+skeleton + know (new run-retrigger slot), tests (redeploy-v2 thru URL pin), suites,
+stat tsc, DECISIONS/memory. NOT committed.
+
+## 2026-11-23 — RESULT: redeploy v2 (thru transport) + stat run-retrigger slot — doctrine restored
+
+User caught a doctrine violation: stat web's retriggerRun knew about the retrigger
+recipe AND the thru transport. Fixed by moving knowledge into features/slots:
+- feat redeploy v2 (back/features/redeploy/v2/js-web/): optional attrs `thru` (base of
+  a thru route) + `timeout-s` (default 120) — thru mode sends GET
+  <thru>?target=<src>&method=post&body={"project"}&timeout_s instead of the direct
+  POST; direct mode byte-identical to v1. Spec/docs updated (v2 rows, use case:
+  sleeping src backend + unanswered CORS preflight). Tests back/test/redeploy-v2.test.mjs
+  (4) — feat suite now 135/135 (v1 redeploy suite still pins v1).
+- stat web: FeatureConfig gained optional build-time `attrs` (merged under usage attrs
+  in FeatureSlot); new constant row `run-retrigger` → redeploy v2 with
+  src=BACKEND_URL/req/retrigger, thru=FEAT_URL/thru (URLs from env = config data);
+  DeployTab's bespoke ↻ button/retriggering state replaced by
+  <FeatureSlot slot="run-retrigger" attrs={{project, namespace}}/>; retriggerRun +
+  THRU_URL row deleted from api.service.ts/.env (the 2026-11-22 (15) thru patch is
+  superseded by this). tsc: only pre-existing rc-picker error; parcel build clean.
+- Skeleton + know feature-slots: `run-retrigger` slot documented (web slots table,
+  diagram, consumers row). NOT committed; stat -d pending; redeploy v2 needs feat -d
+  first (stat's slot loads it from the feat host at runtime — until feat deploys, the
+  slot stays dark by design (silent-fail), no harm).

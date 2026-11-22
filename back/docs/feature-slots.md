@@ -49,6 +49,7 @@ use the `web-`/`back-` wording; slot IDs stay as deployed (a future uniform
 | `app-init` | on boot, before API traffic | wake-up (`<wake-server>`) |
 | `app-version` | persistent chrome (header/footer) | version-display (`<deploy-info>`) |
 | `project-header` | opened project's header | redeploy v1 (`<redeploy-button>`) |
+| `run-retrigger` | deploy-run detail header; re-runs that project's last deploy (thru-routed when the src backend sleeps) | redeploy v2 (`<redeploy-button>` with `thru` attr) |
 | `backend-request` | error-activated in the HTTP layer | http-gate (`window.featGate`), wake-up manual |
 
 Host wrappers: plst `FeatureSlot.tsx` (config from `/api/features`), safe
@@ -71,7 +72,7 @@ Config rows: `FEAT_URL`, `FEAT_<ID>_SLOT=<name>`, optional `FEAT_<ID>_MOUNT=<pat
 | project | web feature slots used | back feature slots filled |
 |---|---|---|
 | plst | reference FeatureSlot host (wake-up, http-gate, version-display; js-ext vendors too) | — |
-| stat | app-init (wake-up), app-version (version-display), backend-request (http-gate) | route: req, get-updates (env-config rows) |
+| stat | app-init, app-version, backend-request, run-retrigger | route: req, get-updates (env-config rows) |
 | safe | project-header (redeploy) | route: req (`/api/req`, TOTP-gated call site) |
 | chat | — | via thru transport (THRU_URL) |
 

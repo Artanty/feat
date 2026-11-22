@@ -71,8 +71,8 @@ test('buildRequest: string body template forwarded verbatim', () => {
 
 test('buildRequest: ${ENV} references resolve from the recipe env first', () => {
   const env = {
-    FLOW_BACK_DOMAIN: 'https://flow.dev',
-    FEAT_REQ_R_TARGET: '${FLOW_BACK_DOMAIN}/retrigger',
+    FLOW_BACK_URL: 'https://flow.dev',
+    FEAT_REQ_R_TARGET: '${FLOW_BACK_URL}/retrigger',
     FEAT_REQ_R_METHOD: 'post',
     FEAT_REQ_R_HEADERS: '{"Authorization": "Bearer ${R_TOKEN}"}',
     FEAT_REQ_R_BODY: '{"project": "{{project}}"}',

@@ -22,6 +22,8 @@ kebab-case; unknown ignored; missing required → renders NOTHING).
 | `project` | yes | project name (repo), e.g. `safe` |
 | `namespace` | yes | project namespace, e.g. `web` — combined into `project@namespace` |
 | `token-key` | no | localStorage key whose value is sent as `X-Totp-Auth` on the click request — for hosts whose session header lives in storage but is attached to their own HTTP stack, not global fetch |
+| `thru` | no (v2) | base URL of a feat thru route (spec/thru.md), e.g. `https://feat.twc1.net/thru`. When set, the click is routed through it instead of POSTing src directly: `GET <thru>?target=<src>&method=post&body=<json>&timeout_s=<n>` (same body as direct mode). The thru-transport knowledge lives in the FEATURE — hosts pass only URLs as config attrs. Use case: src sits on a sleeping free-tier backend whose unanswered CORS preflight kills a direct browser POST; the always-on thru fetches server-side (waking the backend). In thru mode `token-key` sends `X-Totp-Auth` on the thru request itself |
+| `timeout-s` | no (v2) | outbound budget seconds in thru mode, default `120` (covers cold starts; thru's own default is 30) |
 
 ## Behavior
 
@@ -39,3 +41,10 @@ kebab-case; unknown ignored; missing required → renders NOTHING).
    optional `token-key` header.
 5. Styles inline + theme-agnostic (uses currentColor/inherit); the button must fit both
    dark and light hosts.
+
+## Versions
+
+- **v2** (2026-11-23) — optional `thru` + `timeout-s` attrs: thru-routed click for
+  sleeping/cold `src` backends (transport knowledge in the feature, URLs are config).
+  Direct mode unchanged from v1.
+- **v1** (2026-11-21) — direct POST to src only.

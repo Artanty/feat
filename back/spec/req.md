@@ -38,7 +38,7 @@ needs it), not separate versions.
 
 - **Env references** — `${UPPER_SNAKE_NAME}` in TARGET/HEADERS/BODY resolves against the
   process env FIRST (before params), so shared values live in one env row (e.g.
-  `FEAT_REQ_R_TARGET = ${FLOW_BACK_DOMAIN}/retrigger`). A reference to an unset env →
+  `FEAT_REQ_R_TARGET = ${FLOW_BACK_URL}/retrigger`). A reference to an unset env →
   500 recipe misconfigured naming the env. Env names are UPPER_SNAKE_CASE only
   (know/entries/rules.md).
 - Params are merged from the JSON request body (object) and the query string — **query
