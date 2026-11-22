@@ -86,3 +86,98 @@ presence map (no values — secret-safe, matches siblings); features = mounted f
 5. Run suites; RESULT entry. Not deployed (needs -d;). DECISIONS rotated this session.
 
 --- rotated to DECISIONS-archive.md (2026-11-21, ~450 → current-thread-only) — see DECISIONS-archive.md for prior history
+
+## 2026-11-22 — PLAN: loader v2 remote resolution — no vendored feature files in consumers
+
+User correction (stat wiring): consumers must not carry feature files at all
+(stat/back/features/get-updates/get-updates.js "should not exist"). The loader becomes
+the sole fetcher: for each FEAT_<ID>_MOUNT row, resolve the module LOCAL-FIRST
+(vendoredDir features/<id>/<id>.js — pinned/offline installs), else fetch from the feat
+host: FEAT_URL env (or opts.featUrl) → GET <base>/manifest.json → features[<id>].latest
+→ GET <base>/<id>/<v>/js-node/<id>.js → import via data: URL (single-file modules, no
+writes, no repo pollution). No FEAT_URL + no local file → silent-fail per feature.
+1. Update loader v2 + spec/docs semantics (remote resolution, FEAT_URL row, js-node ns
+   main-file convention <id>.js, data:-URL import, fetchImpl opt for tests).
+2. Feat tests: fetch-miss mounts from fake host, local-first priority, no-FEAT_URL skip.
+3. stat: rm -rf features/get-updates, re-vendor loader v2, .env.example note (FEAT_URL),
+   local e2e with feat flask :5477 → endpoint appears from REMOTE feature only when row
+   set; dormant otherwise. DECISIONS in both repos.
+
+## 2026-11-22 — RESULT: loader v2.1 remote resolution shipped, 120/120 + stat e2e
+
+Done, nothing committed. Loader v2 gained remote resolution (spec/docs updated, v2.1
+row): local-first features/<id>/<id>.js; otherwise FEAT_URL (or opts.featUrl) →
+GET <base>/manifest.json → features[<id>].latest → GET <base>/<id>/<v>/js-node/<id>.js
+→ import via data: URL (single-file main module convention; nothing written to the
+consumer repo). No local file + no FEAT_URL, unknown feature, or HTTP failure =
+silent-fail per feature. New tests: remote mount via injected fetchImpl, local-wins,
+no-FEAT_URL skip, unknown-feature skip — suite **120/120**.
+stat@back re-wired the v2.1 way: features/get-updates/ DELETED (repo carries only
+loader.js/.d.ts + its pinned req copy); .env.example documents commented
+FEAT_GET_UPDATES_MOUNT + FEAT_URL rows. E2E local (feat flask :5477 + stat tsx :4577):
+with the two rows → GET /get-updates 200, features ["get-updates","req"] (feature code
+fetched from feat at boot); without the mount row → 404 route-absent. Both servers
+stopped, ports free. Consumers now vendor ONLY loader.js — the original backend-slots
+vision, minus the vendoring step. NOT deployed (feat -d pending).
+
+
+## 2026-11-22 (2) — PLAN: loader v3 + get-updates v2 — named slots (SLOT row + anchors)
+
+User direction: env must explicitly say WHICH SLOT a feature fills (an auth-interceptor
+is middleware at a host position, not "a path"); host code says WHERE each slot sits.
+Contract: FEAT_<ID>_SLOT=<name> REQUIRED (absent = dormant; _MOUNT becomes optional
+route-path override, `true` = feature defaultMount). Feature exports kind
+('route'|'middleware') + routes map/defaultMount or middleware fn; legacy attach()
+still supported (req v1). Loader API: mountBackendFeatures(app) simple hosts +
+createFeatLoader()/feat.slot('name') anchors for middleware positions (sorted-id order
+within an anchor; unknown anchor silent-fail). Remote resolution unchanged.
+New versions per rules (v2/v1 recorded as shipped): loader v3, get-updates v2 (drops
+attach boilerplate → kind/defaultMount/routes). Spec/docs rewrite, tests re-pinned,
+stat re-vendors v3 + SLOT rows e2e, rules.md rule 4 + memory updated.
+
+
+## 2026-11-22 (2) — RESULT: loader v3 (named slots) + get-updates v2 shipped, 131/131
+
+Done, nothing committed. Loader v3 (back/features/loader/v3/js-node/): FEAT_<ID>_SLOT
+row is the REQUIRED toggle (absent = dormant); _MOUNT demoted to optional path override
+(`true`/absent = feature defaultMount — canonical paths live in the feature, uniform
+across projects). Feature entries: kind 'route' (defaultMount + routes map,
+'<METHOD> <rel-path>' keys), kind 'middleware' (fills a HOST-PLACED anchor
+feat.slot('<name>') via createFeatLoader(); sorted-id order; unplaced anchor =
+silent-fail), legacy attach() still supported (req v1 mounts with SLOT row, mount/slot
+in settings). Remote resolution unchanged. get-updates v2 (…/v2/js-node/): attach
+boilerplate dropped → kind/defaultMount '/get-updates'/routes; `features` field derives
+from _SLOT rows. Spec/docs rewritten (backend-slots v3 model + versions; get-updates v2
+consumer contract). backend-slots.test.mjs fully re-pinned to v3 (16 cases incl.
+anchors order, remote defaultMount, legacy req, real get-updates v2); new
+get-updates-v2.test.mjs (10); v1 suites still pin v1. Suite **131/131**.
+stat@back: re-vendored loader v3 (tsc clean), .env.example rows → commented
+FEAT_GET_UPDATES_SLOT/FEAT_REQ_SLOT. E2E vs feat :5477: SLOT rows only (no paths!) →
+get-updates at /get-updates (from defaultMount) + req legacy mounted; no SLOT rows →
+both 404 dormant. Servers stopped. Deploy env for stat prod: FEAT_URL +
+FEAT_GET_UPDATES_SLOT=route + FEAT_REQ_SLOT=route (feat deploys first). rules.md
+rule 4 updated. NOT deployed.
+
+
+## 2026-11-22 (3) — RESULT: feature-slots skeleton doc (visual slot map, web + back)
+
+User request: keep + occasionally update a skeleton of existing feature slots as a
+visual schema in the loader docs. Created `back/docs/feature-slots.md`: ASCII two-column
+skeleton (web app slots: app-init/backend-request/app-version/project-header + bus, vs
+backend: loader boot → SLOT env → route slot + host anchors), slot/resident tables,
+config-row reference, consumers-today matrix (plst/stat/safe/chat), and a maintenance
+note (update the map whenever a feature/slot is added — the map shows SLOTS, per-feature
+docs stay the detail source). backend-slots.md links to it. know/entries/feature-slots.md
+backend section refreshed to loader v3 reality (was stale v1 + duplicated paragraph) and
+points at the feat skeleton as the maintained visual map. No code changes; suites
+untouched. NOT deployed.
+
+
+## 2026-11-22 (4) — RESULT: slot docs renamed to web-/back- wording (docs only)
+
+User: both sides are feature slots — label them uniformly. feature-slots.md skeleton +
+know/entries/feature-slots.md sections renamed to "web feature slots (web)" /
+"back feature slots (back)", with an explicit note that both are feature slots split by
+environment and that slot IDs stay as deployed (a uniform web-*/back-* ID scheme would
+be a separate migration touching consumer configs). Docs only — no code/config changes.
+
