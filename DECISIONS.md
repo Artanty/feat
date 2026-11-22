@@ -242,3 +242,25 @@ recipe AND the thru transport. Fixed by moving knowledge into features/slots:
   diagram, consumers row). NOT committed; stat -d pending; redeploy v2 needs feat -d
   first (stat's slot loads it from the feat host at runtime — until feat deploys, the
   slot stays dark by design (silent-fail), no harm).
+
+## 2026-11-23 (2) — PLAN: redeploy v3 — attrs read at click time (stale-attribute bug)
+
+User bug: switching runs in stat DeployTab then clicking redeploy sent the PREVIOUS
+run's project (stat@back while viewing tik@back). Cause: v2 reads src/project/
+namespace/thru once in connectedCallback and closes over them; React updates attrs on
+the SAME element when the selected run changes, but the component never re-reads
+(no attributeChangedCallback). Fix: all attrs read lazily inside the click handler
+(+ title/labels recomputed from current attrs); required-attr validation stays at
+connect (renders nothing). v3 dir (v2 is published/deployed in tag 0.0.44 — never edit
+in place); stat feat.ts row pins v3. Tests pin the lazy reads. Needs feat -d.
+
+## 2026-11-23 (2) — RESULT: redeploy v3 (click-time attrs) shipped, 141/141
+
+v3 = v2 + attr() helper; ALL attrs read inside the click handler; title/labels and
+redeploy:done detail built from click-time values (refreshTitle helper). Required-attr
+check stays at connect (renders nothing when missing at mount). Spec/docs v3 rows.
+Tests back/test/redeploy-v3.test.mjs (6: legacy pins adapted + stale-attr pins) — feat
+suite **141/141**. stat web feat.ts row pins redeploy v3 (tsc/build unaffected —
+version string only). Fix ships only after feat -d (v3 on the feat host); until then
+stat's slot 404s silently and stays dark — deploy feat first, no stat deploy needed
+(BOOTS from the host each load).

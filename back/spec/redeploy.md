@@ -44,6 +44,11 @@ kebab-case; unknown ignored; missing required → renders NOTHING).
 
 ## Versions
 
+- **v3** (2026-11-23) — stale-attribute fix: ALL attrs (src/project/namespace/thru/
+  timeout-s/token-key) are read at CLICK time via an `attr()` helper, never captured at
+  connect — hosts update attributes on the same element instance when the slot's data
+  changes (stat: opening another run's card), and v2 clicked with the first render's
+  values. Title + `redeploy:done` detail use click-time values too.
 - **v2** (2026-11-23) — optional `thru` + `timeout-s` attrs: thru-routed click for
   sleeping/cold `src` backends (transport knowledge in the feature, URLs are config).
   Direct mode unchanged from v1.

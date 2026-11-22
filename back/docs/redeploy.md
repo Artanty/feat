@@ -44,6 +44,8 @@ opened project (runtime data the slot carries).
 
 ## Versions
 
+- **v3** (2026-11-23) — attrs read at click time (hosts like React update attributes on
+  the same element when the slot data changes; v2 sent the stale first-render project).
 - **v2** (2026-11-23) — optional `thru` + `timeout-s` attrs: the click routes through
   a feat thru route (`GET <thru>?target=<src>&method=post&body=…&timeout_s=…`) for
   sleeping/cold src backends — the thru knowledge lives in the feature; hosts pass only

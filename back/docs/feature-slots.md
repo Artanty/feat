@@ -29,9 +29,10 @@ chrome                                 │  path = defaultMount  │  placed by 
 │   version-display <deploy-info>│    │  req v1 (legacy) ─────┼─ GET|POST /req/:name   │
 ├────────────────────────────────┤    │                       │  (middleware features  │
 │ project-header                 │    │                       │   run sorted-id; none  │
-│   redeploy <redeploy-button>   │    │                       │   resident yet — e.g.  │
-└────────────────────────────────┘    │                       │   pre-auth anchor for  │
-                                      │                       │   an auth-interceptor) │
+├────────────────────────────────┤    │                       │   pre-auth anchor for  │
+│ run-retrigger                  │    │                       │                        │
+│   redeploy v3 (thru transport) │    │                       │                        │
+└────────────────────────────────┘    │                       │                        │
 bus (feat feature `bus`, js-web):     └───────────────────────┴───────────────────────┘
 attrs in · events out · request/reply  pre-loader: thru (py blueprint, registered
                                        directly by the host — GET|POST /thru?target=…)
@@ -49,7 +50,7 @@ use the `web-`/`back-` wording; slot IDs stay as deployed (a future uniform
 | `app-init` | on boot, before API traffic | wake-up (`<wake-server>`) |
 | `app-version` | persistent chrome (header/footer) | version-display (`<deploy-info>`) |
 | `project-header` | opened project's header | redeploy v1 (`<redeploy-button>`) |
-| `run-retrigger` | deploy-run detail header; re-runs that project's last deploy (thru-routed when the src backend sleeps) | redeploy v2 (`<redeploy-button>` with `thru` attr) |
+| `run-retrigger` | deploy-run detail header; re-runs that project's last deploy (thru-routed when the src backend sleeps) | redeploy v3 (`<redeploy-button>` with `thru` attr, click-time attrs) |
 | `backend-request` | error-activated in the HTTP layer | http-gate (`window.featGate`), wake-up manual |
 
 Host wrappers: plst `FeatureSlot.tsx` (config from `/api/features`), safe
