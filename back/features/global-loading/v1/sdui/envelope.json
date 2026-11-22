@@ -1,0 +1,43 @@
+{
+  "envelopeVersion": 1,
+  "remoteId": "global-loading",
+  "name": "Loading",
+  "netAllowlist": [],
+  "card": {
+    "log_id": "global-loading",
+    "states": [
+      {
+        "state_id": 0,
+        "div": {
+          "type": "container",
+          "width": { "type": "match_parent" },
+          "height": { "type": "wrap_content" },
+          "content_alignment_horizontal": "center",
+          "content_alignment_vertical": "center",
+          "items": [
+            {
+              "type": "gif",
+              "gif_url": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><style>@keyframes%20gl{to{transform:rotate(360deg)}}</style><g style='transform-origin:14px%2014px;animation:gl%20.8s%20linear%20infinite' fill='none' stroke-width='3'><circle cx='14' cy='14' r='11' stroke='rgba(140,140,150,.25)'/><path d='M14%203a11%2011%200%200%201%2011%2011' stroke='%236b7280' stroke-linecap='round'/></g></svg>",
+              "width": { "type": "fixed", "value": 28 },
+              "height": { "type": "fixed", "value": 28 }
+            },
+            {
+              "type": "container",
+              "width": { "type": "wrap_content" },
+              "height": { "type": "wrap_content" },
+              "paddings": { "top": 10 },
+              "items": [
+                {
+                  "type": "text",
+                  "text": "loading…",
+                  "font_size": 12,
+                  "text_color": "@{theme == 'dark' ? '#9CA3AF' : '#6B7280'}"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,5 +1,17 @@
 # DECISIONS
 
+## 2026-11-22 (1) — RESULT: global-loading v1 sdui namespace added (DONE, not deployed)
+
+- `back/features/global-loading/v1/sdui/envelope.json` created; served at
+  `/global-loading/v1/sdui/envelope.json` (verified locally on :5477). js-web
+  overlay untouched. Card: DivKit `gif` spinner (animated-SVG data URL — CSS
+  keyframes inside the SVG animate under <img>, no network request, passes ext
+  contracts validateEnvelope) + "loading…" text themed via the ext host's shared
+  `theme` global. Root height wrap_content (DivKit-web sizes card roots to
+  content; the ext host centers it with flexbox).
+- Consumed by ext: shown in the side-panel card host while a tab's envelope is
+  loading (stat via thru can take ~30s). Needs feat redeploy for prod.
+
 ## 2026-11-21 (5) — RESULT: naming convention settled — kebab everywhere, loader = sole translator
 
 Rule 3 written to know/entries/rules.md after weighing four options with the user:
