@@ -1,5 +1,6 @@
 """feat — runtime feature library.
 
+
 One concept only: a feature. A feature version may ship several
 namespace implementations at once (ns is a free-form path part, e.g.
 js-web, js-node, py — not a constant):
