@@ -1,0 +1,17 @@
+{
+  "kind": "route",
+  "defaultMount": "/get-updates",
+  "envs": [
+    { "name": "FEAT_URL", "required": false, "description": "feat host base URL — enables the loader's remote resolution (features are fetched from here at boot)" },
+    { "name": "FEAT_GET_UPDATES_SLOT", "required": true, "description": "slot toggle: which slot the feature fills; 'route' is the built-in HTTP-endpoint slot" },
+    { "name": "FEAT_GET_UPDATES_VERSION", "required": false, "description": "pin 'vN' or 'latest' (default latest)" },
+    { "name": "FEAT_GET_UPDATES_MOUNT", "required": false, "description": "optional route-path override; 'true' or absent = defaultMount /get-updates" },
+    { "name": "FEAT_GET_UPDATES_FEATURES", "required": false, "description": "override the reported features list (comma-separated ids)" },
+    { "name": "TAG_VERSION", "required": false, "description": "deploy identity: app version (falls back to package.json version)" },
+    { "name": "COMMIT_ID", "required": false, "description": "deploy identity: commit sha" },
+    { "name": "COMMIT", "required": false, "description": "deploy identity: commit message" },
+    { "name": "PROJECT_ID", "required": false, "description": "deploy identity: project id" },
+    { "name": "SLAVE_REPO", "required": false, "description": "deploy identity: repo" },
+    { "name": "NAMESPACE", "required": false, "description": "deploy identity: namespace" }
+  ]
+}

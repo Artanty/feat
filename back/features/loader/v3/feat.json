@@ -1,0 +1,9 @@
+{
+  "envs": [
+    { "name": "FEAT_URL", "required": false, "description": "feat host base URL — enables remote resolution of not-vendored features (the only row the CONSUMER side of the loader needs)" },
+    { "name": "FEAT_<ID>_SLOT", "required": false, "description": "toggle for feature <id>: which slot fills (route = built-in; other names = host anchors via feat.slot('<name>')); absent = feature dormant" },
+    { "name": "FEAT_<ID>_VERSION", "required": false, "description": "pin feature <id> to 'vN' or 'latest' (default latest; v4 only; v3 ignores this row)" },
+    { "name": "FEAT_<ID>_MOUNT", "required": false, "description": "route-slot path override; 'true' = the feature's defaultMount" },
+    { "name": "FEAT_<ID>_<SETTING>", "required": false, "description": "extra feature settings, passed through verbatim (lowercased key)" }
+  ]
+}

@@ -264,3 +264,64 @@ suite **141/141**. stat web feat.ts row pins redeploy v3 (tsc/build unaffected �
 version string only). Fix ships only after feat -d (v3 on the feat host); until then
 stat's slot 404s silently and stays dark — deploy feat first, no stat deploy needed
 (BOOTS from the host each load).
+
+## 2026-11-26 — PLAN: feat catalog (env metadata) + loader v4 (pin + validation) + get-updates in tik@back
+
+User: features config must come from envs; feat project = source of truth for each
+feature's required envs. Phase 1 (this session) = feat + tik; Phase 2 (next, spec
+below) = safe feat tab. Decisions: model B (SLOT toggle + optional FEAT_<ID>_VERSION
+pin); feat.json per version + GET /catalog.json (aggregated, namespaces from dir scan);
+platform rule — the js-node namespace is the LOADER's identity (hardcoded fetch
+segment), never serf/env knowledge. Audit: tik/stat slot wiring doctrinally clean;
+safe@back still loader v1 + vendored req file (queued for Phase 2).
+1. feat.json for get-updates/v2, req/v1, loader/v3+v4; /catalog.json in app.py
+   (no-cache, CORS *); pytest test_catalog_py.py.
+2. loader v4: _VERSION pin (vN|latest, default manifest latest; excluded from
+   settings); pre-mount validation via one shared catalog fetch (required envs must be
+   present+non-empty else silent-fail skip naming rows); catalog unreachable → proceed
+   unvalidated; opts.namespace test override. Spec/docs/skeleton updates;
+   backend-slots-v4.test.mjs (v3 pins re-run + new cases).
+3. tik: vendor loader v4 (app.ts untouched), .env.example FEAT section + refresh stale
+   v1 rows, tsc+esbuild, local e2e (feat :5477 + tik :3202 → GET /get-updates; v99 pin
+   → skip+log), stop servers.
+4. Records + memory. Nothing committed; feat -d required before prod catalog exists.
+
+### Phase 2 spec (safe, NEXT session — not built now)
+- New 'feat' tab (do NOT touch existing 'features' tab): left = feat list from the
+  feat prod catalog, fetched DIRECTLY from web at session start (PRJ_FEAT_BACK_URL
+  baked in the web build); right block = readonly envs of the selected version +
+  version pagination on top (envs differ per version).
+- Link table project_feats(id, projectSourcedName, projectNamespace, feat,
+  featVersion) — NO FKs (user-specified columns); CRUD via local.ts TABLES entry.
+- Add-link modals both directions: project block → feat select then version select
+  (+latest); feat block → project+namespace select. One feat ↔ many projects.
+- Project-block validation (api-v2 projects only): linked feat's required envs absent
+  from project envs → red-line warning naming the envs (existing .status-red pattern);
+  custom-envs title gains per-env badges naming the feats that require it (shared
+  custom-envs.component gets a badges input; multiple feats per env → multiple badges).
+- safe@back stays metadata-free: feat is the source of truth. Also migrate safe@back
+  off loader v1 → v4 and delete the vendored features/req/ (rule 4).
+
+## 2026-11-26 — RESULT: catalog + loader v4 + tik get-updates shipped, node 152/152 + py 5/5
+
+- Catalog: feat.json authored for get-updates/v2, req/v1, loader/v3+v4 (FEAT_URL
+  demoted to optional — it's the loader's row, not a feature's); GET /catalog.json in
+  app.py (per-version kind/defaultMount/envs + namespaces dir-scan; absent feat.json →
+  envs []). pytest back/test/test_catalog_py.py (5) via throwaway .venv-test (system
+  python has no pytest; dir gitignored).
+- Loader v4 (back/features/loader/v4/js-node/): _VERSION pin (vN|latest; excluded from
+  settings), pre-mount required-env validation via ONE shared catalog fetch per mount,
+  unknown pin → skip, catalog unreachable → unvalidated + manifest fallback, PLATFORM
+  RULE js-node hardcoded (opts.namespace tests only). Spec/docs updated (catalog
+  section + v4 rows + platform rule). backend-slots-v4.test.mjs (11) — node suite
+  **152/152**.
+- tik@back: loader v4 vendored (app.ts untouched), .env.example rewritten to the REAL
+  api-v2 names the code reads (HST_PORT/HST_API_PREFIX/PRJ_AUTH_ENABLED/KEY_BACK_URL/
+  PROJECT_ID/PRJ_BASE_KEY/PRJ_OUTER_EVENTS_*) + FEAT section. tsc+esbuild clean.
+  E2E local: feat :5477 + tik node bundle :3202 with FEAT_URL +
+  FEAT_GET_UPDATES_SLOT=route + _VERSION=v2 → GET /get-updates 200 (version 1.0.40 =
+  package.json fallback, features ["get-updates"]); _VERSION=v99 → endpoint 404,
+  /health 200, error "unknown version 'v99'". Servers stopped, ports free. tik has no
+  DECISIONS.md — feat section appended to its AGENTS.md instead.
+- NOT committed. feat -d required before prod catalog exists (loader v4 validation on
+  prod hosts + safe phase 2 depend on it). Phase 2 (safe) spec above, same date.

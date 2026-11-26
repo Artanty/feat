@@ -1,0 +1,16 @@
+{
+  "kind": "route",
+  "defaultMount": "/req",
+  "envs": [
+    { "name": "FEAT_URL", "required": false, "description": "feat host base URL — enables the loader's remote resolution (features are fetched from here at boot)" },
+    { "name": "FEAT_REQ_SLOT", "required": true, "description": "slot toggle: 'route' (built-in HTTP-endpoint slot)" },
+    { "name": "FEAT_REQ_VERSION", "required": false, "description": "pin 'vN' or 'latest' (default latest)" },
+    { "name": "FEAT_REQ_MOUNT", "required": false, "description": "optional route-path override; 'true' or absent = defaultMount /req" },
+    { "name": "FEAT_REQ_TIMEOUT_S", "required": false, "description": "per-recipe default outbound budget seconds (default 30)" },
+    { "name": "FEAT_REQ_<NAME>_TARGET", "required": false, "description": "recipe <name>: absolute http(s) URL — PRESENCE of this row ENABLES the route /req/<name>; ${ENV} refs and {{param}} placeholders allowed" },
+    { "name": "FEAT_REQ_<NAME>_METHOD", "required": false, "description": "recipe <name>: get/post/put/patch/delete (default get)" },
+    { "name": "FEAT_REQ_<NAME>_HEADERS", "required": false, "description": "recipe <name>: JSON object of outbound headers — where secrets go" },
+    { "name": "FEAT_REQ_<NAME>_BODY", "required": false, "description": "recipe <name>: JSON object or string; {{param}} placeholders allowed" },
+    { "name": "FEAT_REQ_<NAME>_TIMEOUT_S", "required": false, "description": "recipe <name>: outbound budget seconds (default 30)" }
+  ]
+}

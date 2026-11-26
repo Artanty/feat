@@ -222,3 +222,4 @@ __marimo__/
 .zcode
 # feat origin tracking store (runtime data)
 back/logs/origins.json
+.venv-test/

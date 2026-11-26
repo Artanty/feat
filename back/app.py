@@ -314,6 +314,54 @@ def manifest():
     return {"features": features}
 
 
+@app.get("/catalog.json")
+def catalog():
+    """Feature -> per-version metadata, the ENV-REQUIREMENTS source of truth.
+
+    Aggregates each version's feat.json (kind/defaultMount/envs — authored with the
+    feature, namespace-agnostic) plus the namespaces shipped in that version dir
+    (platform list: js-node, future py…). Versions without feat.json still appear,
+    with empty envs. Consumers: safe's feat tab (readonly env display + validation)
+    and the backend-slots loader v4+ (pre-mount required-env validation).
+    No-cache + CORS * (the manifest policy).
+    """
+    features = {}
+    if FEATURES_DIR.is_dir():
+        for d in sorted(FEATURES_DIR.iterdir()):
+            if not d.is_dir():
+                continue
+            versions = versions_of(d.name)
+            if not versions:
+                continue
+            version_entries = {}
+            for n in versions:
+                entry = {
+                    "namespaces": [
+                        ns.name for ns in sorted(
+                            (feature_dir(d.name) / f"v{n}").iterdir()
+                        ) if ns.is_dir()
+                    ],
+                    "envs": [],
+                }
+                feat_json = feature_dir(d.name) / f"v{n}" / "feat.json"
+                if feat_json.is_file():
+                    try:
+                        meta = json.loads(feat_json.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        meta = {}
+                    for key in ("kind", "defaultMount"):
+                        if key in meta:
+                            entry[key] = meta[key]
+                    if isinstance(meta.get("envs"), list):
+                        entry["envs"] = meta["envs"]
+                version_entries[f"v{n}"] = entry
+            features[d.name] = {
+                "latest": f"v{versions[-1]}",
+                "versions": version_entries,
+            }
+    return {"features": features}
+
+
 def docs_names():
     """Feature names that have a docs page (docs/<feature>.md present)."""
     if not DOCS_DIR.is_dir():

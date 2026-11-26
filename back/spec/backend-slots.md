@@ -26,6 +26,7 @@ await mountBackendFeatures(app);   // mounts whatever the deploy config says
 The SLOT row is the toggle — absent/empty = the feature stays dormant:
 
     FEAT_<ID>_SLOT=<slotName>     # required: which slot the feature fills
+    FEAT_<ID>_VERSION=vN|latest   # optional (v4): version pin; default latest
     FEAT_<ID>_MOUNT=<path|true>   # route slot only, optional: path override;
                                   #   `true` = the feature's defaultMount (canonical)
     FEAT_<ID>_<SETTING>           # extra feature settings, passed verbatim
@@ -62,27 +63,44 @@ Route paths in `routes` are RELATIVE to the mount (`'GET /:name'` at `/req` →
 `GET /req/:name`). The feature must not assume auth — placement/auth policy is the
 host's business.
 
+## Catalog (env-requirements source of truth)
+
+Each feature version MAY ship `features/<feat>/<vN>/feat.json`:
+`{kind?, defaultMount?, envs: [{name, required, description}]}` (namespace-agnostic).
+`GET /catalog.json` aggregates every feature/version: `{features: {name: {latest,
+versions: {vN: {kind?, defaultMount?, envs, namespaces}}}}}` (namespaces = dir scan).
+Consumers: safe's feat tab (readonly env display + project validation) and loader v4+
+(pre-mount validation). Versions without feat.json appear with `envs: []`.
+
 ## Loader semantics
 
 1. Scan env for `^FEAT_([A-Z0-9]+(_[A-Z0-9]+)*)_SLOT$` rows with non-empty values
   (the toggle). For each, in stable (sorted by id) order:
-2. RESOLVE the module LOCAL-FIRST: `<vendoredDir>/<id>/<id>.js` if readable
+2. RESOLVE VERSION + VALIDATE ENVS (v4): one shared `GET <FEAT_URL>/catalog.json`
+  per mount. Version = `FEAT_<ID>_VERSION` pin (`vN`) or the catalog's `latest`;
+  a pin not present in the catalog → the feature fails to mount. Every env the
+  version's catalog entry marks `required` must be present and non-empty in the
+  process env, else the feature is skipped with an error naming the rows. Catalog
+  unreachable → mounting proceeds unvalidated (warning; the module fetch needs the
+  same host anyway) with the manifest as the latest-version fallback.
+3. RESOLVE the module LOCAL-FIRST: `<vendoredDir>/<id>/<id>.js` if readable
   (a deliberate version pin); otherwise fetch from the feat host —
-  `GET <FEAT_URL>/manifest.json` → `features[<id>].latest` →
-  `GET <FEAT_URL>/<id>/<latest>/js-node/<id>.js` — and import the source via a
+  `GET <FEAT_URL>/<id>/<version>/<namespace>/<id>.js` — and import the source via a
   `data:` URL (single-file main module; nothing is written to the consumer repo).
-  No local file + no `FEAT_URL` → resolution fails.
-3. REGISTER per the feature entry:
+  No local file + no `FEAT_URL` → resolution fails. PLATFORM RULE: the namespace
+  segment is the LOADER's identity (the js-node loader always requests `js-node`;
+  a py consumer vendors a py loader) — never serf or env knowledge.
+4. REGISTER per the feature entry:
    - legacy `attach`: call `attach(app, { ...settings, mount, slot })`.
    - `kind 'route'` (must have `SLOT=route`): register each routes entry on the app;
      mount path = `_MOUNT` override, else `defaultMount` (no both → fail).
    - `kind 'middleware'`: append to the named anchor the HOST placed via
      `feat.slot(<name>)`; several features in one anchor run in sorted-id order.
      A `SLOT` naming an anchor the host never placed → fail.
-4. **Silent-fail per feature**: resolution/registration failure is logged to
+5. **Silent-fail per feature**: resolution/registration failure is logged to
   console.error and SKIPPED — a broken feature (or an unreachable feat host) must
   never break the host boot. Other features still mount.
-5. Returns the mounted feature ids (for logging/tests).
+6. Returns the mounted feature ids (for logging/tests).
 
 Host API: simple hosts (routes only) call `mountBackendFeatures(app)`. Hosts with
 middleware positions use `createFeatLoader()`:
@@ -108,6 +126,11 @@ The slot a feature typically occupies (naming lives in know/entries/feature-slot
 
 ## Versions
 
+- **v4** (2026-11-26) — `FEAT_<ID>_VERSION` pin (vN|latest, default latest; excluded
+  from settings) + pre-mount required-env validation via one shared `/catalog.json`
+  fetch per mount; catalog unreachable → unvalidated mount + manifest fallback.
+  Platform rule: the namespace is the loader's identity (js-node hardcoded;
+  opts.namespace for tests only). All v3 semantics otherwise unchanged.
 - **v3** (2026-11-22) — named slots: `FEAT_<ID>_SLOT` row is the required toggle;
   `_MOUNT` demoted to optional path override (`true` = feature `defaultMount`);
   feature entries kind route (routes map + defaultMount) / kind middleware;

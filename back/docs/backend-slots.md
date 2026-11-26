@@ -40,6 +40,9 @@ Config env rows (read at mount time):
 
 - `FEAT_<ID>_SLOT=<slotName>` — required toggle: which slot the feature fills
   (`route` built-in, or a host anchor name). Absent = dormant.
+- `FEAT_<ID>_VERSION=vN|latest` — optional (v4): pin the feature version; default
+  latest. Required envs from the feat host's `/catalog.json` are validated before
+  mounting (missing rows → feature skipped with an error naming them).
 - `FEAT_<ID>_MOUNT=<path|true>` — optional route-path override; `true` (recommended,
   or just omit) = the feature's own `defaultMount`, so canonical endpoint paths are
   identical across projects.
@@ -64,6 +67,8 @@ or an unreachable feat host never breaks the host boot. Dependency-free ESM.
 
 ## Versions
 
+- **v4** (2026-11-26) — `_VERSION` pins + `/catalog.json` required-env validation;
+  platform rule (namespace = loader identity).
 - **v3** (2026-11-22) — named slots: `_SLOT` row is the required toggle; `_MOUNT`
   optional override (`true` = feature defaultMount); route/middleware kinds;
   `createFeatLoader()` + `feat.slot()` anchors; legacy attach() supported.
